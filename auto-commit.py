@@ -2,10 +2,16 @@ import os
 import subprocess
 from git import Repo
 import google.generativeai as genai
+from dotenv import load_dotenv
 
-# Konfigurieren Sie Ihren Gemini API-Schlüssel
-with open(os.path.expanduser("~/private/api/gemini"), "r") as f:
-    GEMINI_API_KEY = f.read().strip()
+# .env-Datei laden
+load_dotenv()
+
+# API-Schlüssel aus der Umgebungsvariable holen
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    raise ValueError("GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
 
 # Gemini API konfigurieren
 genai.configure(api_key=GEMINI_API_KEY)

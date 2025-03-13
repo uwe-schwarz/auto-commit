@@ -30,12 +30,18 @@ pip install -r requirements.txt
 
 ### Gemini API-Key einrichten
 
-Speichere deinen API-Key in der Datei ~/private/api/gemini (nur der Key, sonst nichts):
+Speichere deinen API-Key in einer .env-Datei im Hauptverzeichnis des Projekts. Ein Beispiel für das Format findest du in der Datei env.example.
+
+1. Erstelle die .env-Datei basierend auf dem Beispiel:
 
 ```bash
-mkdir -p ~/private/api
-echo "DEIN_GEMINI_API_KEY" > ~/private/api/gemini
-chmod 600 ~/private/api/gemini
+cp env.example .env
+```
+
+2. Öffne die .env-Datei und füge deinen API-Schlüssel ein:
+
+```
+GEMINI_API_KEY=dein_api_schlüssel_hier
 ```
 
 ### Skript als ausführbare Datei einrichten
