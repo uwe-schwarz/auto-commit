@@ -11,15 +11,18 @@ with open(os.path.expanduser("~/private/api/gemini"), "r") as f:
 genai.configure(api_key=GEMINI_API_KEY)
 
 def get_modified_files(repo):
-    """Gibt eine Liste der geänderten Dateien zurück."""
-    changed_files = [item.a_path for item in repo.index.diff(None)]
-    print(f"DEBUG: Geänderte Dateien: {changed_files}")  # Debug-Output
-    return changed_files
+    """Gibt eine Liste der geänderten und neuen Dateien zurück."""
+    changed_files = [item.a_path for item in repo.index.diff("HEAD")]  # Geänderte Dateien
+    new_files = repo.git.diff("--cached", "--name-only").splitlines()  # Neu hinzugefügte Dateien
+    all_files = list(set(changed_files + new_files))  # Kombinieren und Duplikate entfernen
+
+    #print(f"DEBUG: Geänderte und neue Dateien: {all_files}")  # Debug-Output
+    return all_files
 
 def get_diff_for_file(repo, file_path):
     """Gibt den Diff einer Datei zurück."""
     diff = repo.git.diff('HEAD', '--', file_path)
-    print(f"DEBUG: Diff für {file_path}:\n{diff}")  # Debug-Output
+    #print(f"DEBUG: Diff für {file_path}:\n{diff}")  # Debug-Output
     return diff
 
 def generate_commit_message(file_diffs):
@@ -28,12 +31,12 @@ def generate_commit_message(file_diffs):
     for file_path, diff in file_diffs.items():
         prompt += f"\nDatei: {file_path}\nÄnderungen:\n{diff}\n"
 
-    print(f"DEBUG: Prompt für Gemini:\n{prompt}")  # Debug-Output
+    #print(f"DEBUG: Prompt für Gemini:\n{prompt}")  # Debug-Output
 
     model = genai.GenerativeModel("gemini-1.5-flash")
     response = model.generate_content(prompt)
 
-    print(f"DEBUG: Antwort von Gemini:\n{response.text}")  # Debug-Output
+    #print(f"DEBUG: Antwort von Gemini:\n{response.text}")  # Debug-Output
 
     return response.text if response and response.text else "Default commit message"
 
@@ -43,8 +46,10 @@ def main():
     # Überprüfe, ob das Repository Änderungen oder untracked Files enthält
     has_changes = repo.is_dirty(untracked_files=True)
     untracked_files = repo.untracked_files  # Liste der untracked Files
+    unstaged_files = [item.a_path for item in repo.index.diff(None)]
 
-    if has_changes or untracked_files:
+
+    if has_changes or untracked_files or unstaged_files:
         if untracked_files:
             print("\nUntracked Files gefunden:")
             for file in untracked_files:
@@ -55,6 +60,18 @@ def main():
             if user_input == 'y':
                 repo.git.add(all=True)  # Untracked Files hinzufügen
                 print("Untracked Files wurden hinzugefügt.")
+
+        if unstaged_files:
+            print("\nModifizierte, aber nicht gestagte Dateien gefunden:")
+            for file in unstaged_files:
+                print(f" - {file}")
+
+            # Nutzer fragen, ob unstaged Dateien hinzugefügt werden sollen
+            user_input = input("\nMöchtest du alle unstaged Dateien hinzufügen? (y/n): ").strip().lower()
+            if user_input == 'y':
+                repo.git.add(unstaged_files)
+                print("Unstaged Files wurden hinzugefügt.")
+
 
         modified_files = get_modified_files(repo)
 
