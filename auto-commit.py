@@ -1,3 +1,4 @@
+import argparse
 import os
 import subprocess
 from git import Repo
@@ -12,6 +13,17 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
+
+# Sprache aus `.env` laden (Fallback: "Deutsch")
+DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
+
+# CLI-Argumente parsen
+parser = argparse.ArgumentParser(description="Auto-Commit mit AI-generierter Commit-Message.")
+parser.add_argument("--lang", help="Sprache der Commit-Message", default=DEFAULT_LANGUAGE)
+args = parser.parse_args()
+
+# Final verwendete Sprache
+COMMIT_LANGUAGE = args.lang
 
 # Gemini API konfigurieren
 genai.configure(api_key=GEMINI_API_KEY)
@@ -33,7 +45,7 @@ def get_diff_for_file(repo, file_path):
 
 def generate_commit_message(file_diffs):
     """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
-    prompt = "Erstelle eine Git-Commit-Nachricht basierend auf den folgenden Änderungen:\n"
+    prompt = "Erstelle eine Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE} basierend auf den folgenden Änderungen:\n"
     for file_path, diff in file_diffs.items():
         prompt += f"\nDatei: {file_path}\nÄnderungen:\n{diff}\n"
 

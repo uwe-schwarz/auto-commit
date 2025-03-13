@@ -93,6 +93,22 @@ Das Skript wird:
 6. Nach Bestätigung den Commit ausführen.
 7. Falls ein origin-Remote vorhanden ist, den Push ausführen.
 
+Sprache der Commit-Nachricht anpassen
+
+Die Commit-Nachricht kann in einer beliebigen Sprache generiert werden.
+Dazu kann die Sprache entweder in der .env-Datei gesetzt werden:
+
+```
+COMMIT_LANGUAGE=Deutsch
+```
+
+Oder direkt beim Aufruf des Skripts als Parameter übergeben werden:
+
+```bash
+autocommit --lang Englisch
+autocommit --lang Französisch
+```
+
 ## Beispielausgabe
 
 ```
@@ -152,5 +168,6 @@ MIT License – Open Source & für eigene Zwecke anpassbar. 🚀
 ✅ **Globale Nutzung mit `autocommit`**  
 ✅ **Beispielausgabe für Klarheit**  
 ✅ **Fehlerbehebungstipps**  
+✅ **AI-generierte Commit-Messages in deiner bevorzugten Sprache**  
 
 Jetzt kannst du das Skript einfach per `autocommit` von überall starten! 🚀
