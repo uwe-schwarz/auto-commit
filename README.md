@@ -148,9 +148,9 @@ MIT License – Open Source & für eigene Zwecke anpassbar. 🚀
 
 ### **Zusammenfassung**
 
-✅ **Installationsanleitung** für lokale Nutzung
-✅ **Globale Nutzung mit `autocommit`**
-✅ **Beispielausgabe für Klarheit**
-✅ **Fehlerbehebungstipps**
+✅ **Installationsanleitung** für lokale Nutzung  
+✅ **Globale Nutzung mit `autocommit`**  
+✅ **Beispielausgabe für Klarheit**  
+✅ **Fehlerbehebungstipps**  
 
 Jetzt kannst du das Skript einfach per `autocommit` von überall starten! 🚀
