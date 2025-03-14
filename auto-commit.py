@@ -23,7 +23,7 @@ parser.add_argument("--lang", help="Sprache der Commit-Message", default=DEFAULT
 args = parser.parse_args()
 
 # Final verwendete Sprache
-COMMIT_LANGUAGE = args.lang
+COMMIT_LANGUAGE = args.lang if args.lang else DEFAULT_LANGUAGE
 
 # Gemini API konfigurieren
 genai.configure(api_key=GEMINI_API_KEY)
@@ -115,6 +115,18 @@ def main():
 
         # Entfernen der temporären Datei
         os.remove('COMMIT_MSG.txt')
+
+        # Übersicht vor Commit anzeigen
+        print("\n===== Änderungen für den Commit =====")
+        print(repo.git.status())
+        print("\n===== Vorgeschlagene bzw. angepasste Commit-Nachricht =====")
+        print(final_commit_message)
+
+        # Letzte Bestätigung einholen
+        user_input = input("\nMöchtest du diese Änderungen committen? (y/n): ").strip().lower()
+        if user_input != 'y':
+            print("Commit abgebrochen.")
+            return
 
         # Änderungen committen
         repo.index.commit(final_commit_message)
