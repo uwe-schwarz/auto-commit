@@ -45,7 +45,8 @@ def get_diff_for_file(repo, file_path):
 
 def generate_commit_message(file_diffs):
     """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
-    prompt = "Erstelle eine Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE} basierend auf den folgenden Änderungen:\n"
+    prompt = f"Erstelle eine Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE} basierend auf den folgenden Änderungen:\n"
+
     for file_path, diff in file_diffs.items():
         prompt += f"\nDatei: {file_path}\nÄnderungen:\n{diff}\n"
 
@@ -66,8 +67,9 @@ def main():
     untracked_files = repo.untracked_files  # Liste der untracked Files
     unstaged_files = [item.a_path for item in repo.index.diff(None)]
 
-
     if has_changes or untracked_files or unstaged_files:
+        print(f"\nGeneriere Commit-Nachricht in der Sprache {COMMIT_LANGUAGE}…")
+
         if untracked_files:
             print("\nUntracked Files gefunden:")
             for file in untracked_files:
