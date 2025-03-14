@@ -92,6 +92,10 @@ def main():
                 repo.git.add(unstaged_files)
                 print("Unstaged Files wurden hinzugefügt.")
 
+        has_changes = repo.is_dirty(untracked_files=True)
+        if not has_changes:
+            print("Keine Änderungen zum Committen.")
+            return
 
         modified_files = get_modified_files(repo)
 
