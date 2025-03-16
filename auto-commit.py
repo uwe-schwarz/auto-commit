@@ -1,7 +1,7 @@
 import argparse
 import os
 import subprocess
-from git import Repo
+from git import Repo, InvalidGitRepositoryError
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -27,6 +27,14 @@ COMMIT_LANGUAGE = args.lang if args.lang else DEFAULT_LANGUAGE
 
 # Gemini API konfigurieren
 genai.configure(api_key=GEMINI_API_KEY)
+
+def find_git_root(path):
+    """Findet das Root-Verzeichnis des Git-Repositories."""
+    try:
+        repo = Repo(path, search_parent_directories=True)
+        return repo.working_tree_dir
+    except InvalidGitRepositoryError:
+        return None
 
 def get_modified_files(repo):
     """Gibt eine Liste der geänderten und neuen Dateien zurück."""
@@ -60,7 +68,12 @@ def generate_commit_message(file_diffs):
     return response.text if response and response.text else "Default commit message"
 
 def main():
-    repo = Repo(os.getcwd())
+    git_root = find_git_root(os.getcwd())
+    if git_root is None:
+        print("Fehler: Kein Git-Repository gefunden.")
+        return
+
+    repo = Repo(git_root)
 
     # Überprüfe, ob das Repository Änderungen oder untracked Files enthält
     has_changes = repo.is_dirty(untracked_files=True)
