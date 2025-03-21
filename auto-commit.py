@@ -119,6 +119,8 @@ def main():
         file_diffs = {file: get_diff_for_file(repo, file) for file in modified_files}
 
         commit_message = generate_commit_message(file_diffs)
+        # Doppelte Leerzeichen entfernen
+        commit_message = ' '.join(commit_message.split())
 
         # Schreiben der Commit-Nachricht in eine temporäre Datei
         with open('COMMIT_MSG.txt', 'w') as f:
