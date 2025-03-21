@@ -122,15 +122,35 @@ def main():
 
         # Schreiben der Commit-Nachricht in eine temporäre Datei
         with open('COMMIT_MSG.txt', 'w') as f:
+            # Commit-Nachricht schreiben
             f.write(commit_message)
+            f.write("\n\n# Bitte gib die Commit-Nachricht für deine Änderungen ein. Zeilen, die\n")
+            f.write("# mit # beginnen, werden ignoriert, und eine leere Nachricht bricht den Commit ab.\n")
+            f.write("#\n")
+            f.write("# Zu übernehmende Änderungen:\n")
+            f.write("#\n")
+            
+            # Geänderte Dateien anzeigen
+            for file in modified_files:
+                f.write(f"#\t{file}\n")
+            
+            # Diff-Informationen anzeigen
+            f.write("#\n")
+            for file, diff in file_diffs.items():
+                f.write(f"# Changes in {file}:\n")
+                for line in diff.splitlines():
+                    f.write(f"# {line}\n")
+                f.write("#\n")
 
         # Öffnen des Editors für die Commit-Nachricht
         editor = os.getenv('EDITOR', 'vim')
         subprocess.call([editor, 'COMMIT_MSG.txt'])
 
-        # Lesen der bearbeiteten Commit-Nachricht
+        # Lesen der bearbeiteten Commit-Nachricht und Filtern der Kommentare
         with open('COMMIT_MSG.txt', 'r') as f:
-            final_commit_message = f.read().strip()
+            lines = f.readlines()
+            # Nur die Zeilen behalten, die nicht mit # beginnen
+            final_commit_message = ''.join(line for line in lines if not line.startswith('#')).strip()
 
         # Entfernen der temporären Datei
         os.remove('COMMIT_MSG.txt')
