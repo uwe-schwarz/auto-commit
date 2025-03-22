@@ -1,5 +1,6 @@
 import argparse
 import os
+import re
 import subprocess
 from git import Repo, InvalidGitRepositoryError
 import google.generativeai as genai
@@ -120,7 +121,7 @@ def main():
 
         commit_message = generate_commit_message(file_diffs)
         # Doppelte Leerzeichen entfernen
-        commit_message = ' '.join(commit_message.split())
+        commit_message = re.sub(r' {2,}', ' ', commit_message)
 
         # Schreiben der Commit-Nachricht in eine temporäre Datei
         with open('COMMIT_MSG.txt', 'w') as f:
