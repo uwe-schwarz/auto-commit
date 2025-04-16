@@ -38,13 +38,13 @@ def find_git_root(path):
         return None
 
 def get_modified_files(repo):
-    """Gibt eine Liste der geänderten und neuen Dateien zurück."""
-    changed_files = [item.a_path for item in repo.index.diff("HEAD")]  # Geänderte Dateien
+    """Gibt eine Liste der geänderten, neuen und gelöschten Dateien zurück."""
+    changed = [item for item in repo.index.diff("HEAD")]
+    changed_files = [item.a_path for item in changed if item.change_type != 'D']  # Geänderte Dateien (keine gelöschten)
+    deleted_files = [item.a_path for item in changed if item.change_type == 'D']  # Gelöschte Dateien
     new_files = repo.git.diff("--cached", "--name-only").splitlines()  # Neu hinzugefügte Dateien
     all_files = list(set(changed_files + new_files))  # Kombinieren und Duplikate entfernen
-
-    #print(f"DEBUG: Geänderte und neue Dateien: {all_files}")  # Debug-Output
-    return all_files
+    return all_files, deleted_files
 
 def get_diff_for_file(repo, file_path):
     """Gibt den Diff einer Datei zurück."""
@@ -111,13 +111,15 @@ def main():
             print("Keine Änderungen zum Committen.")
             return
 
-        modified_files = get_modified_files(repo)
+        modified_files, deleted_files = get_modified_files(repo)
 
-        if not modified_files:
-            print("Keine modifizierten Dateien gefunden. Abbruch.")
+        if not modified_files and not deleted_files:
+            print("Keine modifizierten oder gelöschten Dateien gefunden. Abbruch.")
             return
 
         file_diffs = {file: get_diff_for_file(repo, file) for file in modified_files}
+        deleted_diffs = {file: get_diff_for_file(repo, file) for file in deleted_files}
+        file_diffs.update(deleted_diffs)  # Gelöschte Dateien auch in die Diff-Liste aufnehmen
 
         commit_message = generate_commit_message(file_diffs)
         # Doppelte Leerzeichen entfernen
@@ -136,7 +138,10 @@ def main():
             # Geänderte Dateien anzeigen
             for file in modified_files:
                 f.write(f"#\t{file}\n")
-            
+            if deleted_files:
+                f.write("#\n# Gelöschte Dateien:\n")
+                for file in deleted_files:
+                    f.write(f"#\t{file} (gelöscht)\n")
             # Diff-Informationen anzeigen
             f.write("#\n")
             for file, diff in file_diffs.items():
