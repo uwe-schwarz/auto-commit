@@ -160,8 +160,9 @@ def main():
             # Nur die Zeilen behalten, die nicht mit # beginnen
             final_commit_message = ''.join(line for line in lines if not line.startswith('#')).strip()
 
-        # Entfernen der temporären Datei
-        os.remove('COMMIT_MSG.txt')
+        # Schreiben der Commit-Nachricht in die Datei
+        with open('COMMIT_MSG.txt', 'w') as f:
+            f.write(final_commit_message)
 
         # Übersicht vor Commit anzeigen
         print("\n===== Änderungen für den Commit =====")
@@ -175,8 +176,8 @@ def main():
             print("Commit abgebrochen.")
             return
 
-        # Änderungen committen
-        repo.index.commit(final_commit_message)
+        # Änderungen committen (mit Hooks)
+        subprocess.run(['git', 'commit', '-F', 'COMMIT_MSG.txt'])
 
         # Überprüfen, ob ein 'origin' Remote gesetzt ist und Push durchführen
         if 'origin' in [remote.name for remote in repo.remotes]:
@@ -184,6 +185,9 @@ def main():
             origin.push()
         else:
             print("Kein 'origin' Remote gefunden. Überspringe 'git push'.")
+
+        # Entfernen der temporären Datei
+        os.remove('COMMIT_MSG.txt')
     else:
         print("Keine Änderungen zum Committen.")
 
