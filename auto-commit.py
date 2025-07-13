@@ -54,7 +54,7 @@ def get_diff_for_file(repo, file_path):
 
 def generate_commit_message(file_diffs):
     """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
-    prompt = f"Erstelle eine Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE} basierend auf den folgenden Änderungen:\n"
+    prompt = f"Erstelle eine Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE} basierend auf den folgenden Änderungen. Gebe nur die Commit-Nachricht aus, kein Markdown.\n\n"
 
     for file_path, diff in file_diffs.items():
         prompt += f"\nDatei: {file_path}\nÄnderungen:\n{diff}\n"
