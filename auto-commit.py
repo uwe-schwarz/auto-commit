@@ -61,7 +61,7 @@ def generate_commit_message(file_diffs):
 
     #print(f"DEBUG: Prompt für Gemini:\n{prompt}")  # Debug-Output
 
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(prompt)
 
     #print(f"DEBUG: Antwort von Gemini:\n{response.text}")  # Debug-Output
