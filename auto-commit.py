@@ -126,7 +126,7 @@ def main():
         commit_message = re.sub(r' {2,}', ' ', commit_message)
 
         # Schreiben der Commit-Nachricht in eine temporäre Datei
-        with open('COMMIT_MSG.txt', 'w') as f:
+        with open('/tmp/COMMIT_MSG.txt', 'w') as f:
             # Commit-Nachricht schreiben
             f.write(commit_message)
             f.write("\n\n# Bitte gib die Commit-Nachricht für deine Änderungen ein. Zeilen, die\n")
@@ -152,16 +152,16 @@ def main():
 
         # Öffnen des Editors für die Commit-Nachricht
         editor = os.getenv('EDITOR', 'vim')
-        subprocess.call([editor, 'COMMIT_MSG.txt'])
+        subprocess.call([editor, '/tmp/COMMIT_MSG.txt'])
 
         # Lesen der bearbeiteten Commit-Nachricht und Filtern der Kommentare
-        with open('COMMIT_MSG.txt', 'r') as f:
+        with open('/tmp/COMMIT_MSG.txt', 'r') as f:
             lines = f.readlines()
             # Nur die Zeilen behalten, die nicht mit # beginnen
             final_commit_message = ''.join(line for line in lines if not line.startswith('#')).strip()
 
         # Schreiben der Commit-Nachricht in die Datei
-        with open('COMMIT_MSG.txt', 'w') as f:
+        with open('/tmp/COMMIT_MSG.txt', 'w') as f:
             f.write(final_commit_message)
 
         # Übersicht vor Commit anzeigen
@@ -177,7 +177,7 @@ def main():
             return
 
         # Änderungen committen (mit Hooks)
-        subprocess.run(['git', 'commit', '-F', 'COMMIT_MSG.txt'])
+        subprocess.run(['git', 'commit', '-F', '/tmp/COMMIT_MSG.txt'])
 
         # Überprüfen, ob ein 'origin' Remote gesetzt ist und Push durchführen
         if 'origin' in [remote.name for remote in repo.remotes]:
@@ -185,11 +185,11 @@ def main():
             origin.push()
         else:
             print("Kein 'origin' Remote gefunden. Überspringe 'git push'.")
-
-        # Entfernen der temporären Datei
-        os.remove('COMMIT_MSG.txt')
     else:
         print("Keine Änderungen zum Committen.")
+
+    # Entfernen der temporären Datei
+    os.remove('/tmp/COMMIT_MSG.txt')
 
 if __name__ == "__main__":
     main()
