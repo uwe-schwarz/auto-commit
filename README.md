@@ -2,7 +2,7 @@
 
 ## Beschreibung
 
-`autocommit` ist ein Python-Skript, das automatisch geänderte Dateien in einem Git-Repository erkennt, deren Änderungen ausliest und mit Hilfe der Google Gemini API eine Commit-Nachricht generiert. Anschließend wird der Commit in einem Editor zur Bearbeitung geöffnet und bei Bedarf automatisch gepusht.
+`autocommit` ist ein Python-Skript, das automatisch geänderte Dateien in einem Git-Repository erkennt, deren Änderungen ausliest und mit Hilfe der Google Gemini API eine Commit-Nachricht generiert. Es nutzt das aktuelle `google-genai` SDK (empfohlenes Nachfolge-SDK). Anschließend wird der Commit in einem Editor zur Bearbeitung geöffnet und bei Bedarf automatisch gepusht.
 
 Das Skript unterstützt:
 - Erkennung von **untracked** und **modifizierten, aber nicht gestagten** Dateien
@@ -38,10 +38,12 @@ Speichere deinen API-Key in einer .env-Datei im Hauptverzeichnis des Projekts. E
 cp env.example .env
 ```
 
-2. Öffne die .env-Datei und füge deinen API-Schlüssel ein:
+2. Öffne die .env-Datei und füge deinen API-Schlüssel sowie optional das gewünschte Modell ein:
 
 ```
 GEMINI_API_KEY=dein_api_schlüssel_hier
+GEMINI_MODEL=gemini-2.0-flash   # optional, kann per CLI überschrieben werden
+COMMIT_LANGUAGE=Deutsch
 ```
 
 ### Skript als ausführbare Datei einrichten
@@ -96,10 +98,11 @@ Das Skript wird:
 Sprache der Commit-Nachricht anpassen
 
 Die Commit-Nachricht kann in einer beliebigen Sprache generiert werden.
-Dazu kann die Sprache entweder in der .env-Datei gesetzt werden:
+Die Sprache kann in der `.env` gesetzt oder direkt beim Aufruf überschrieben werden. Optional kannst du auch ein anderes Gemini-Modell wählen:
 
 ```
 COMMIT_LANGUAGE=Deutsch
+GEMINI_MODEL=gemini-2.0-flash
 ```
 
 Oder direkt beim Aufruf des Skripts als Parameter übergeben werden:
@@ -107,6 +110,7 @@ Oder direkt beim Aufruf des Skripts als Parameter übergeben werden:
 ```bash
 autocommit --lang Englisch
 autocommit --lang Französisch
+autocommit --lang Deutsch --model gemini-2.0-flash
 ```
 
 ## Beispielausgabe

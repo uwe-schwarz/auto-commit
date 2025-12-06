@@ -2,34 +2,35 @@ import argparse
 import os
 import re
 import subprocess
-from git import Repo, InvalidGitRepositoryError
-import google.generativeai as genai
+import tempfile
+from typing import Dict, List, Optional, Tuple
+
+from git import InvalidGitRepositoryError, Repo
+from google import genai
 from dotenv import load_dotenv
 
 # .env-Datei laden
 load_dotenv()
 
-# API-Schlüssel aus der Umgebungsvariable holen
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 
 if not GEMINI_API_KEY:
     raise ValueError("GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
 
-# Sprache aus `.env` laden (Fallback: "Deutsch")
-DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
+client = genai.Client(api_key=GEMINI_API_KEY)
 
-# CLI-Argumente parsen
 parser = argparse.ArgumentParser(description="Auto-Commit mit AI-generierter Commit-Message.")
-parser.add_argument("--lang", help="Sprache der Commit-Message", default=DEFAULT_LANGUAGE)
+parser.add_argument("--lang", help="Sprache der Commit-Message", default=None)
+parser.add_argument("--model", help="Gemini Modellname", default=None)
 args = parser.parse_args()
 
-# Final verwendete Sprache
-COMMIT_LANGUAGE = args.lang if args.lang else DEFAULT_LANGUAGE
+COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
+MODEL_NAME = args.model or DEFAULT_MODEL
 
-# Gemini API konfigurieren
-genai.configure(api_key=GEMINI_API_KEY)
 
-def find_git_root(path):
+def find_git_root(path: str) -> Optional[str]:
     """Findet das Root-Verzeichnis des Git-Repositories."""
     try:
         repo = Repo(path, search_parent_directories=True)
@@ -37,38 +38,101 @@ def find_git_root(path):
     except InvalidGitRepositoryError:
         return None
 
-def get_modified_files(repo):
-    """Gibt eine Liste der geänderten, neuen und gelöschten Dateien zurück."""
-    changed = [item for item in repo.index.diff("HEAD")]
-    changed_files = [item.a_path for item in changed if item.change_type != 'D']  # Geänderte Dateien (keine gelöschten)
-    deleted_files = [item.a_path for item in changed if item.change_type == 'D']  # Gelöschte Dateien
-    new_files = repo.git.diff("--cached", "--name-only").splitlines()  # Neu hinzugefügte Dateien
-    all_files = list(set(changed_files + new_files))  # Kombinieren und Duplikate entfernen
-    return all_files, deleted_files
 
-def get_diff_for_file(repo, file_path):
-    """Gibt den Diff einer Datei zurück."""
-    diff = repo.git.diff('HEAD', '--', file_path)
-    #print(f"DEBUG: Diff für {file_path}:\n{diff}")  # Debug-Output
-    return diff
+def get_staged_and_deleted_files(repo: Repo) -> Tuple[List[str], List[str]]:
+    """Liefert gestagte Dateien sowie gelöschte Dateien getrennt."""
+    staged = repo.git.diff("--cached", "--name-only").splitlines()
+    deleted = repo.git.diff("--cached", "--diff-filter=D", "--name-only").splitlines()
+    staged_non_deleted = [path for path in staged if path not in deleted]
+    return staged_non_deleted, deleted
 
-def generate_commit_message(file_diffs):
+
+def get_diff_for_file(repo: Repo, file_path: str) -> str:
+    """Diff der gestagten Änderungen für eine Datei."""
+    return repo.git.diff("--cached", "--", file_path)
+
+
+def generate_commit_message(file_diffs: Dict[str, str]) -> str:
     """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
-    prompt = f"Erstelle eine Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE} basierend auf den folgenden Änderungen. Gebe nur die Commit-Nachricht aus, kein Markdown.\n\n"
+    prompt_parts: List[str] = [
+        (
+            f"Erstelle eine prägnante Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE}. "
+            "Nutze eine kurze Summary-Zeile (max 72 Zeichen) und optional einen Body mit kurzen Bullet Points. "
+            "Verwende kein Markdown-Formatting wie ``` oder Überschriften."
+        )
+    ]
 
     for file_path, diff in file_diffs.items():
-        prompt += f"\nDatei: {file_path}\nÄnderungen:\n{diff}\n"
+        prompt_parts.append(f"Datei: {file_path}\nÄnderungen:\n{diff}")
 
-    #print(f"DEBUG: Prompt für Gemini:\n{prompt}")  # Debug-Output
+    prompt = "\n\n".join(prompt_parts)
 
-    model = genai.GenerativeModel("gemini-2.5-flash")
-    response = model.generate_content(prompt)
+    try:
+        response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        print(f"Fehler bei der Commit-Generierung: {exc}")
+        return "chore: update changes"
 
-    #print(f"DEBUG: Antwort von Gemini:\n{response.text}")  # Debug-Output
+    message = getattr(response, "text", "") or ""
+    message = message.strip()
+    if not message:
+        return "chore: update changes"
 
-    return response.text if response and response.text else "Default commit message"
+    # Mehrere Leerzeilen reduzieren, sonst nichts verändern
+    message = re.sub(r"\n{3,}", "\n\n", message)
+    return message
 
-def main():
+
+def prompt_to_stage(repo: Repo, files: List[str], label: str, add_all: bool = False) -> None:
+    """Fragt, ob Dateien gestagt werden sollen, und führt das Staging aus."""
+    if not files:
+        return
+
+    print(f"\n{label} gefunden:")
+    for file in files:
+        print(f" - {file}")
+
+    user_input = input(f"\nMöchtest du alle {label.lower()} hinzufügen? (y/n): ").strip().lower()
+    if user_input == "y":
+        if add_all:
+            repo.git.add(all=True)
+        else:
+            repo.git.add(files)
+        print(f"{label} wurden hinzugefügt.")
+    else:
+        print(f"{label} wurden nicht hinzugefügt.")
+
+
+def write_commit_template(
+    file_path: str,
+    commit_message: str,
+    modified_files: List[str],
+    deleted_files: List[str],
+    file_diffs: Dict[str, str],
+) -> None:
+    """Schreibt die Commit-Nachricht plus Kontext in eine temporäre Datei."""
+    with open(file_path, "w") as f:
+        f.write(commit_message)
+        f.write("\n\n# Bitte gib die Commit-Nachricht für deine Änderungen ein. Zeilen, die\n")
+        f.write("# mit # beginnen, werden ignoriert, und eine leere Nachricht bricht den Commit ab.\n")
+        f.write("#\n# Zu übernehmende Änderungen:\n")
+
+        for file in modified_files:
+            f.write(f"#\t{file}\n")
+        if deleted_files:
+            f.write("#\n# Gelöschte Dateien:\n")
+            for file in deleted_files:
+                f.write(f"#\t{file} (gelöscht)\n")
+
+        f.write("#\n")
+        for file, diff in file_diffs.items():
+            f.write(f"# Changes in {file}:\n")
+            for line in diff.splitlines():
+                f.write(f"# {line}\n")
+            f.write("#\n")
+
+
+def main() -> None:
     git_root = find_git_root(os.getcwd())
     if git_root is None:
         print("Fehler: Kein Git-Repository gefunden.")
@@ -76,120 +140,67 @@ def main():
 
     repo = Repo(git_root)
 
-    # Überprüfe, ob das Repository Änderungen oder untracked Files enthält
-    has_changes = repo.is_dirty(untracked_files=True)
-    untracked_files = repo.untracked_files  # Liste der untracked Files
+    # Check auf jegliche Änderungen
+    if not repo.is_dirty(untracked_files=True):
+        print("Keine Änderungen zum Committen.")
+        return
+
+    untracked_files = repo.untracked_files
     unstaged_files = [item.a_path for item in repo.index.diff(None)]
 
-    if has_changes or untracked_files or unstaged_files:
-        print(f"\nGeneriere Commit-Nachricht in der Sprache {COMMIT_LANGUAGE}…")
+    prompt_to_stage(repo, untracked_files, "Untracked Files", add_all=True)
+    prompt_to_stage(repo, unstaged_files, "unstaged Dateien")
 
-        if untracked_files:
-            print("\nUntracked Files gefunden:")
-            for file in untracked_files:
-                print(f" - {file}")
+    staged_files, deleted_files = get_staged_and_deleted_files(repo)
+    if not staged_files and not deleted_files:
+        print("Keine gestagten Änderungen gefunden. Bitte Dateien zum Committen hinzufügen.")
+        return
 
-            # Nutzer fragen, ob die Dateien hinzugefügt werden sollen
-            user_input = input("\nMöchtest du alle untracked Dateien hinzufügen? (y/n): ").strip().lower()
-            if user_input == 'y':
-                repo.git.add(all=True)  # Untracked Files hinzufügen
-                print("Untracked Files wurden hinzugefügt.")
+    file_diffs = {file: get_diff_for_file(repo, file) for file in staged_files + deleted_files}
+    commit_message = generate_commit_message(file_diffs)
+    commit_message = commit_message or "chore: update changes"
 
-        if unstaged_files:
-            print("\nModifizierte, aber nicht gestagte Dateien gefunden:")
-            for file in unstaged_files:
-                print(f" - {file}")
+    tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
+    tmp_path = tmp_file.name
+    tmp_file.close()
 
-            # Nutzer fragen, ob unstaged Dateien hinzugefügt werden sollen
-            user_input = input("\nMöchtest du alle unstaged Dateien hinzufügen? (y/n): ").strip().lower()
-            if user_input == 'y':
-                repo.git.add(unstaged_files)
-                print("Unstaged Files wurden hinzugefügt.")
+    try:
+        write_commit_template(tmp_path, commit_message, staged_files, deleted_files, file_diffs)
 
-        has_changes = repo.is_dirty(untracked_files=True)
-        if not has_changes:
-            print("Keine Änderungen zum Committen.")
-            return
+        editor = os.getenv("EDITOR", "vim")
+        subprocess.call([editor, tmp_path])
 
-        modified_files, deleted_files = get_modified_files(repo)
-
-        if not modified_files and not deleted_files:
-            print("Keine modifizierten oder gelöschten Dateien gefunden. Abbruch.")
-            return
-
-        file_diffs = {file: get_diff_for_file(repo, file) for file in modified_files}
-        deleted_diffs = {file: get_diff_for_file(repo, file) for file in deleted_files}
-        file_diffs.update(deleted_diffs)  # Gelöschte Dateien auch in die Diff-Liste aufnehmen
-
-        commit_message = generate_commit_message(file_diffs)
-        # Doppelte Leerzeichen entfernen
-        commit_message = re.sub(r' {2,}', ' ', commit_message)
-
-        # Schreiben der Commit-Nachricht in eine temporäre Datei
-        with open('/tmp/COMMIT_MSG.txt', 'w') as f:
-            # Commit-Nachricht schreiben
-            f.write(commit_message)
-            f.write("\n\n# Bitte gib die Commit-Nachricht für deine Änderungen ein. Zeilen, die\n")
-            f.write("# mit # beginnen, werden ignoriert, und eine leere Nachricht bricht den Commit ab.\n")
-            f.write("#\n")
-            f.write("# Zu übernehmende Änderungen:\n")
-            f.write("#\n")
-            
-            # Geänderte Dateien anzeigen
-            for file in modified_files:
-                f.write(f"#\t{file}\n")
-            if deleted_files:
-                f.write("#\n# Gelöschte Dateien:\n")
-                for file in deleted_files:
-                    f.write(f"#\t{file} (gelöscht)\n")
-            # Diff-Informationen anzeigen
-            f.write("#\n")
-            for file, diff in file_diffs.items():
-                f.write(f"# Changes in {file}:\n")
-                for line in diff.splitlines():
-                    f.write(f"# {line}\n")
-                f.write("#\n")
-
-        # Öffnen des Editors für die Commit-Nachricht
-        editor = os.getenv('EDITOR', 'vim')
-        subprocess.call([editor, '/tmp/COMMIT_MSG.txt'])
-
-        # Lesen der bearbeiteten Commit-Nachricht und Filtern der Kommentare
-        with open('/tmp/COMMIT_MSG.txt', 'r') as f:
+        with open(tmp_path, "r") as f:
             lines = f.readlines()
-            # Nur die Zeilen behalten, die nicht mit # beginnen
-            final_commit_message = ''.join(line for line in lines if not line.startswith('#')).strip()
+            final_commit_message = "".join(line for line in lines if not line.startswith("#")).strip()
 
-        # Schreiben der Commit-Nachricht in die Datei
-        with open('/tmp/COMMIT_MSG.txt', 'w') as f:
+        if not final_commit_message:
+            print("Commit-Nachricht leer. Abbruch.")
+            return
+
+        with open(tmp_path, "w") as f:
             f.write(final_commit_message)
 
-        # Übersicht vor Commit anzeigen
         print("\n===== Änderungen für den Commit =====")
         print(repo.git.status())
         print("\n===== Vorgeschlagene bzw. angepasste Commit-Nachricht =====")
         print(final_commit_message)
 
-        # Letzte Bestätigung einholen
         user_input = input("\nMöchtest du diese Änderungen committen? (y/n): ").strip().lower()
-        if user_input != 'y':
+        if user_input != "y":
             print("Commit abgebrochen.")
             return
 
-        # Änderungen committen (mit Hooks)
-        subprocess.run(['git', 'commit', '-F', '/tmp/COMMIT_MSG.txt'])
+        subprocess.run(["git", "commit", "-F", tmp_path], check=False)
 
-        # Überprüfen, ob ein 'origin' Remote gesetzt ist und Push durchführen
-        if 'origin' in [remote.name for remote in repo.remotes]:
-            origin = repo.remote('origin')
-            origin.push()
+        if "origin" in [remote.name for remote in repo.remotes]:
+            repo.remote("origin").push()
         else:
             print("Kein 'origin' Remote gefunden. Überspringe 'git push'.")
-    else:
-        print("Keine Änderungen zum Committen.")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
-    # Entfernen der temporären Datei
-    os.remove('/tmp/COMMIT_MSG.txt')
 
 if __name__ == "__main__":
     main()
