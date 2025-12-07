@@ -7,27 +7,37 @@ from typing import Dict, List, Optional, Tuple
 
 from git import InvalidGitRepositoryError, Repo
 from google import genai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # .env-Datei laden
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+# Defaults und Konfiguration
 DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.6")
+DEFAULT_ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
 
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
-
-client = genai.Client(api_key=GEMINI_API_KEY)
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+ZAI_API_KEY = os.getenv("ZAI_API_KEY")
 
 parser = argparse.ArgumentParser(description="Auto-Commit mit AI-generierter Commit-Message.")
 parser.add_argument("--lang", help="Sprache der Commit-Message", default=None)
-parser.add_argument("--model", help="Gemini Modellname", default=None)
+parser.add_argument("--model", help="Modellname (abhängig vom Provider)", default=None)
+parser.add_argument("--provider", help="AI-Provider: gemini oder zai", default=None)
+parser.add_argument(
+    "--zai-base-url",
+    help="Optional: eigenes Base-URL für Z.AI Coding Plan (OpenAI-kompatibel)",
+    default=None,
+)
 args = parser.parse_args()
 
 COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
-MODEL_NAME = args.model or DEFAULT_MODEL
+AI_PROVIDER = (args.provider or DEFAULT_PROVIDER).lower()
+MODEL_NAME = args.model or (DEFAULT_GEMINI_MODEL if AI_PROVIDER == "gemini" else DEFAULT_ZAI_MODEL)
+ZAI_BASE_URL = args.zai_base_url or DEFAULT_ZAI_BASE_URL
 
 
 class CommitGenerationError(RuntimeError):
@@ -56,11 +66,32 @@ def get_diff_for_file(repo: Repo, file_path: str) -> str:
     return repo.git.diff("--cached", "--", file_path)
 
 
-def generate_commit_message(file_diffs: Dict[str, str]) -> str:
+def create_ai_clients(provider: str, zai_base_url: str) -> Tuple[Optional[genai.Client], Optional[OpenAI]]:
+    """Initialisiert die AI-Clients abhängig vom Provider."""
+    if provider == "gemini":
+        if not GEMINI_API_KEY:
+            raise ValueError("GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
+        return genai.Client(api_key=GEMINI_API_KEY), None
+    if provider == "zai":
+        if not ZAI_API_KEY:
+            raise ValueError("ZAI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
+        return None, OpenAI(api_key=ZAI_API_KEY, base_url=zai_base_url)
+
+    raise ValueError(f"Unbekannter Provider: {provider}")
+
+
+def generate_commit_message(
+    file_diffs: Dict[str, str],
+    provider: str,
+    model_name: str,
+    commit_language: str,
+    gemini_client: Optional[genai.Client],
+    zai_client: Optional[OpenAI],
+) -> str:
     """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
     prompt_parts: List[str] = [
         (
-            f"Erstelle eine prägnante Git-Commit-Nachricht in der Sprache {COMMIT_LANGUAGE}. "
+            f"Erstelle eine prägnante Git-Commit-Nachricht in der Sprache {commit_language}. "
             "Nutze eine kurze Summary-Zeile (max 72 Zeichen) und optional einen Body mit kurzen Bullet Points. "
             "Verwende kein Markdown-Formatting wie ``` oder Überschriften."
         )
@@ -72,7 +103,21 @@ def generate_commit_message(file_diffs: Dict[str, str]) -> str:
     prompt = "\n\n".join(prompt_parts)
 
     try:
-        response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+        if provider == "gemini":
+            if gemini_client is None:
+                raise CommitGenerationError("Gemini-Client fehlt.")
+            response = gemini_client.models.generate_content(model=model_name, contents=prompt)
+            message = getattr(response, "text", "") or ""
+        elif provider == "zai":
+            if zai_client is None:
+                raise CommitGenerationError("Z.AI-Client fehlt.")
+            response = zai_client.chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            message = response.choices[0].message.content if response and response.choices else ""
+        else:
+            raise CommitGenerationError(f"Unbekannter Provider: {provider}")
     except Exception as exc:  # pragma: no cover - defensive fallback
         # Bei 429/RESOURCE_EXHAUSTED sofort abbrechen, statt mit altem Template fortzufahren.
         if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
@@ -83,7 +128,6 @@ def generate_commit_message(file_diffs: Dict[str, str]) -> str:
         print(f"Fehler bei der Commit-Generierung: {exc}")
         return "chore: update changes"
 
-    message = getattr(response, "text", "") or ""
     message = message.strip()
     if not message:
         return "chore: update changes"
@@ -166,9 +210,26 @@ def main() -> None:
         print("Keine gestagten Änderungen gefunden. Bitte Dateien zum Committen hinzufügen.")
         return
 
+    if AI_PROVIDER not in {"gemini", "zai"}:
+        print("Ungültiger Provider. Bitte 'gemini' oder 'zai' wählen (Umgebungsvariable AI_PROVIDER oder CLI-Flag --provider).")
+        return
+
+    try:
+        gemini_client, zai_client = create_ai_clients(AI_PROVIDER, ZAI_BASE_URL)
+    except ValueError as exc:
+        print(exc)
+        return
+
     file_diffs = {file: get_diff_for_file(repo, file) for file in staged_files + deleted_files}
     try:
-        commit_message = generate_commit_message(file_diffs)
+        commit_message = generate_commit_message(
+            file_diffs=file_diffs,
+            provider=AI_PROVIDER,
+            model_name=MODEL_NAME,
+            commit_language=COMMIT_LANGUAGE,
+            gemini_client=gemini_client,
+            zai_client=zai_client,
+        )
     except CommitGenerationError as exc:
         print(exc)
         return

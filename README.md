@@ -2,12 +2,12 @@
 
 ## Beschreibung
 
-`autocommit` ist ein Python-Skript, das automatisch geänderte Dateien in einem Git-Repository erkennt, deren Änderungen ausliest und mit Hilfe der Google Gemini API eine Commit-Nachricht generiert. Es nutzt das aktuelle `google-genai` SDK (empfohlenes Nachfolge-SDK). Anschließend wird der Commit in einem Editor zur Bearbeitung geöffnet und bei Bedarf automatisch gepusht.
+`autocommit` ist ein Python-Skript, das geänderte Dateien in einem Git-Repository erkennt, ihre Diffs einsammelt und automatisch eine Commit-Nachricht erzeugt. Du kannst zwischen **Google Gemini** (über `google-genai`) und **Z.AI GLM Coding Plan** (OpenAI-kompatibel, z. B. `GLM-4.6`) wählen. Danach öffnet sich dein Editor zur Feinjustierung, und auf Wunsch wird automatisch gepusht.
 
 Das Skript unterstützt:
 - Erkennung von **untracked** und **modifizierten, aber nicht gestagten** Dateien
 - Manuelle Bestätigung zum **Hinzufügen neuer oder geänderter Dateien**
-- Automatische Generierung einer Commit-Nachricht mit Google Gemini
+- Automatische Commit-Generierung über Gemini **oder** Z.AI GLM (Coding API)
 - Bearbeitung der Commit-Nachricht im bevorzugten Editor (`$EDITOR` oder `vim`)
 - Automatisches **Committen und Pushen**, falls ein `origin`-Remote vorhanden ist
 
@@ -16,11 +16,11 @@ Das Skript unterstützt:
 ### Voraussetzungen
 
 - Python 3.x
-- `git` installiert
-- Google Gemini API-Zugang (API-Key erforderlich)
-- `pip` für Paketverwaltung
+- `git`
+- API-Key für **Google Gemini** oder **Z.AI GLM Coding Plan**
+- `pip`
 
-### 1. **Repository klonen und Abhängigkeiten installieren**
+### 1. Repository klonen und Abhängigkeiten installieren
 
 ```bash
 git clone https://github.com/dein-user/autocommit.git ~/dev/auto-commit
@@ -28,38 +28,28 @@ cd ~/dev/auto-commit
 pip install -r requirements.txt
 ```
 
-### Gemini API-Key einrichten
+### 2. .env anlegen und Provider konfigurieren
 
-Speichere deinen API-Key in einer .env-Datei im Hauptverzeichnis des Projekts. Ein Beispiel für das Format findest du in der Datei env.example.
-
-1. Erstelle die .env-Datei basierend auf dem Beispiel:
+Beispiel siehe `env.example`. Kopiere die Datei und trage deine Keys ein:
 
 ```bash
 cp env.example .env
 ```
 
-2. Öffne die .env-Datei und füge deinen API-Schlüssel sowie optional das gewünschte Modell ein:
+Wichtige Variablen:
+- `AI_PROVIDER`: `gemini` (Standard) oder `zai`
+- Gemini: `GEMINI_API_KEY`, optional `GEMINI_MODEL`
+- Z.AI: `ZAI_API_KEY`, optional `ZAI_MODEL`, `ZAI_BASE_URL` (Standard: `https://api.z.ai/api/coding/paas/v4` – **Coding API**, nicht die General API)
+- `COMMIT_LANGUAGE`: Sprache der Commit-Nachricht
 
-```
-GEMINI_API_KEY=dein_api_schlüssel_hier
-GEMINI_MODEL=gemini-2.0-flash   # optional, kann per CLI überschrieben werden
-COMMIT_LANGUAGE=Deutsch
-```
-
-### Skript als ausführbare Datei einrichten
-
-1. Stelle sicher, dass du dich im auto-commit-Verzeichnis befindest und eine virtuelle Umgebung (venv) nutzt:
+### 3. Skript als ausführbare Datei einrichten (optional)
 
 ```bash
 cd ~/dev/auto-commit
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
 
-2. Erstelle ein Wrapper-Skript in ~/.local/bin, um auto-commit.py mit der virtuellen Umgebung auszuführen:
-
-```bash
 mkdir -p ~/.local/bin
 echo '#!/bin/bash
 source ~/dev/auto-commit/.venv/bin/activate
@@ -67,51 +57,41 @@ python3 ~/dev/auto-commit/auto-commit.py "$@"' > ~/.local/bin/autocommit
 chmod +x ~/.local/bin/autocommit
 ```
 
-3. Falls ~/.local/bin nicht im PATH ist, füge es deiner Shell-Config hinzu:
+Falls `~/.local/bin` nicht im PATH ist:
 
 ```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc  # für Bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # für Zsh
-source ~/.bashrc  # oder `source ~/.zshrc`
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # oder ~/.bashrc
+source ~/.zshrc
 ```
 
-Jetzt kannst du autocommit von überall ausführen! 🚀
+## Provider-spezifische Hinweise
+
+- **Google Gemini**: Nutzt die `google-genai` API. Modell per `.env` (`GEMINI_MODEL`) oder CLI `--model`.
+- **Z.AI GLM Coding Plan**: OpenAI-kompatibel. Verwende die Coding-Endpoint `https://api.z.ai/api/coding/paas/v4` und setze das Modell (`GLM-4.6`, `GLM-4.5`, `GLM-4.5-air`). Ältere Accounts vor 2025-09-30 sollten auf `GLM-4.6` wechseln.
 
 ## Verwendung
-
-### Automatischen Commit mit AI-Generierung ausführen
 
 ```bash
 autocommit
 ```
 
-Das Skript wird:
+CLI-Optionen:
+- `--lang`: Sprache der Commit-Nachricht
+- `--provider`: `gemini` oder `zai` (überschreibt `.env`)
+- `--model`: Modellname für den gewählten Provider
+- `--zai-base-url`: eigenes Base-URL für die Z.AI Coding API (Standard ist bereits gesetzt)
 
-1. Alle geänderten, aber nicht gestagten und neuen Dateien erkennen.
-2. Fragen, ob sie hinzugefügt werden sollen.
-3. Die Änderungen mit der Google Gemini API analysieren.
-4. Eine Commit-Nachricht vorschlagen.
-5. Den Editor zur Bearbeitung der Nachricht öffnen.
-6. Nach Bestätigung den Commit ausführen.
-7. Falls ein origin-Remote vorhanden ist, den Push ausführen.
+Beispiele:
 
-Sprache der Commit-Nachricht anpassen
+- Gemini nutzen (Standard):
+  ```bash
+  autocommit --lang Englisch --model gemini-2.0-flash
+  ```
 
-Die Commit-Nachricht kann in einer beliebigen Sprache generiert werden.
-Die Sprache kann in der `.env` gesetzt oder direkt beim Aufruf überschrieben werden. Optional kannst du auch ein anderes Gemini-Modell wählen:
-
-```
-COMMIT_LANGUAGE=Deutsch
-GEMINI_MODEL=gemini-2.0-flash
-```
-
-Oder direkt beim Aufruf des Skripts als Parameter übergeben werden:
-
-```bash
-autocommit --lang Englisch
-autocommit --lang Französisch
-autocommit --lang Deutsch --model gemini-2.0-flash
-```
+- Z.AI GLM Coding Plan:
+  ```bash
+  autocommit --provider zai --model GLM-4.6 --zai-base-url https://api.z.ai/api/coding/paas/v4
+  ```
 
 ## Beispielausgabe
 
@@ -130,7 +110,6 @@ Modifizierte, aber nicht gestagte Dateien gefunden:
 Möchtest du alle unstaged Dateien hinzufügen? (y/n): y
 Unstaged Files wurden hinzugefügt.
 
-Generiere Commit-Nachricht mit Gemini...
 Commit-Nachricht:
 feat: Automatische Erkennung und AI-generierte Commit-Messages hinzugefügt
 
@@ -144,34 +123,10 @@ Kein 'origin' Remote gefunden. Überspringe 'git push'.
 
 ## Fehlerbehebung
 
-Falls das Skript nicht gefunden wird:
-
-```bash
-hash -r  # Cache für executables erneuern
-```
-
-Falls autocommit einen Import-Fehler meldet:
-
-```bash
-pip install --force-reinstall -r requirements.txt
-```
-
-Falls ~/.local/bin nicht im PATH ist:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-```
+- `hash -r` falls das Skript nach Installation nicht gefunden wird.
+- `pip install --force-reinstall -r requirements.txt` bei Import-Problemen.
+- PATH prüfen: `export PATH="$HOME/.local/bin:$PATH"`.
 
 ## Lizenz
 
 MIT License – Open Source & für eigene Zwecke anpassbar. 🚀
-
-### **Zusammenfassung**
-
-✅ **Installationsanleitung** für lokale Nutzung  
-✅ **Globale Nutzung mit `autocommit`**  
-✅ **Beispielausgabe für Klarheit**  
-✅ **Fehlerbehebungstipps**  
-✅ **AI-generierte Commit-Messages in deiner bevorzugten Sprache**  
-
-Jetzt kannst du das Skript einfach per `autocommit` von überall starten! 🚀
