@@ -30,6 +30,10 @@ COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
 MODEL_NAME = args.model or DEFAULT_MODEL
 
 
+class CommitGenerationError(RuntimeError):
+    """Signalisiert Fehler bei der KI-Commit-Generierung, bei denen das Tool abbrechen sollte."""
+
+
 def find_git_root(path: str) -> Optional[str]:
     """Findet das Root-Verzeichnis des Git-Repositories."""
     try:
@@ -70,6 +74,12 @@ def generate_commit_message(file_diffs: Dict[str, str]) -> str:
     try:
         response = client.models.generate_content(model=MODEL_NAME, contents=prompt)
     except Exception as exc:  # pragma: no cover - defensive fallback
+        # Bei 429/RESOURCE_EXHAUSTED sofort abbrechen, statt mit altem Template fortzufahren.
+        if "429" in str(exc) or "RESOURCE_EXHAUSTED" in str(exc):
+            raise CommitGenerationError(
+                "KI-Commit-Generierung fehlgeschlagen (429 RESOURCE_EXHAUSTED). "
+                "Bitte später erneut versuchen oder das Kontingent anpassen."
+            ) from exc
         print(f"Fehler bei der Commit-Generierung: {exc}")
         return "chore: update changes"
 
@@ -157,7 +167,11 @@ def main() -> None:
         return
 
     file_diffs = {file: get_diff_for_file(repo, file) for file in staged_files + deleted_files}
-    commit_message = generate_commit_message(file_diffs)
+    try:
+        commit_message = generate_commit_message(file_diffs)
+    except CommitGenerationError as exc:
+        print(exc)
+        return
     commit_message = commit_message or "chore: update changes"
 
     tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
