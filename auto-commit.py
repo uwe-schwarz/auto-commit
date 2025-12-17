@@ -17,9 +17,9 @@ load_dotenv()
 DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
 DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
 
-DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.6")
-DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2")
 
 DEFAULT_ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
 DEFAULT_OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
