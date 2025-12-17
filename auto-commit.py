@@ -3,7 +3,7 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 
 from git import InvalidGitRepositoryError, Repo
 from google import genai
@@ -16,28 +16,53 @@ load_dotenv()
 # Defaults und Konfiguration
 DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
 DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
 DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.6")
+DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
 DEFAULT_ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
+DEFAULT_OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 ZAI_API_KEY = os.getenv("ZAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-parser = argparse.ArgumentParser(description="Auto-Commit mit AI-generierter Commit-Message.")
+parser = argparse.ArgumentParser(
+    description="Auto-Commit mit AI-generierter Commit-Message."
+)
 parser.add_argument("--lang", help="Sprache der Commit-Message", default=None)
 parser.add_argument("--model", help="Modellname (abhängig vom Provider)", default=None)
-parser.add_argument("--provider", help="AI-Provider: gemini oder zai", default=None)
+parser.add_argument(
+    "--provider", help="AI-Provider: gemini, zai oder openai", default=None
+)
 parser.add_argument(
     "--zai-base-url",
     help="Optional: eigenes Base-URL für Z.AI Coding Plan (OpenAI-kompatibel)",
+    default=None,
+)
+parser.add_argument(
+    "--openai-base-url",
+    help="Optional: eigenes Base-URL für OpenAI (OpenAI-kompatibel)",
     default=None,
 )
 args = parser.parse_args()
 
 COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
 AI_PROVIDER = (args.provider or DEFAULT_PROVIDER).lower()
-MODEL_NAME = args.model or (DEFAULT_GEMINI_MODEL if AI_PROVIDER == "gemini" else DEFAULT_ZAI_MODEL)
+
+if AI_PROVIDER == "gemini":
+    default_model = DEFAULT_GEMINI_MODEL
+elif AI_PROVIDER == "zai":
+    default_model = DEFAULT_ZAI_MODEL
+elif AI_PROVIDER == "openai":
+    default_model = DEFAULT_OPENAI_MODEL
+else:
+    default_model = DEFAULT_GEMINI_MODEL
+
+MODEL_NAME = args.model or default_model
 ZAI_BASE_URL = args.zai_base_url or DEFAULT_ZAI_BASE_URL
+OPENAI_BASE_URL = args.openai_base_url or DEFAULT_OPENAI_BASE_URL
 
 
 class CommitGenerationError(RuntimeError):
@@ -48,7 +73,9 @@ def find_git_root(path: str) -> Optional[str]:
     """Findet das Root-Verzeichnis des Git-Repositories."""
     try:
         repo = Repo(path, search_parent_directories=True)
-        return repo.working_tree_dir
+        if not repo.working_tree_dir:
+            return None
+        return str(repo.working_tree_dir)
     except InvalidGitRepositoryError:
         return None
 
@@ -66,16 +93,31 @@ def get_diff_for_file(repo: Repo, file_path: str) -> str:
     return repo.git.diff("--cached", "--", file_path)
 
 
-def create_ai_clients(provider: str, zai_base_url: str) -> Tuple[Optional[genai.Client], Optional[OpenAI]]:
+def create_ai_clients(
+    provider: str, zai_base_url: str
+) -> Tuple[Optional[genai.Client], Optional[OpenAI]]:
     """Initialisiert die AI-Clients abhängig vom Provider."""
     if provider == "gemini":
         if not GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
+            raise ValueError(
+                "GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein."
+            )
         return genai.Client(api_key=GEMINI_API_KEY), None
     if provider == "zai":
         if not ZAI_API_KEY:
-            raise ValueError("ZAI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein.")
+            raise ValueError(
+                "ZAI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein."
+            )
         return None, OpenAI(api_key=ZAI_API_KEY, base_url=zai_base_url)
+
+    if provider == "openai":
+        if not OPENAI_API_KEY:
+            raise ValueError(
+                "OPENAI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein."
+            )
+        if OPENAI_BASE_URL:
+            return None, OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
+        return None, OpenAI(api_key=OPENAI_API_KEY)
 
     raise ValueError(f"Unbekannter Provider: {provider}")
 
@@ -106,16 +148,22 @@ def generate_commit_message(
         if provider == "gemini":
             if gemini_client is None:
                 raise CommitGenerationError("Gemini-Client fehlt.")
-            response = gemini_client.models.generate_content(model=model_name, contents=prompt)
+            response = gemini_client.models.generate_content(
+                model=model_name, contents=prompt
+            )
             message = getattr(response, "text", "") or ""
-        elif provider == "zai":
+        elif provider in {"zai", "openai"}:
             if zai_client is None:
-                raise CommitGenerationError("Z.AI-Client fehlt.")
+                raise CommitGenerationError("OpenAI-kompatibler Client fehlt.")
             response = zai_client.chat.completions.create(
                 model=model_name,
                 messages=[{"role": "user", "content": prompt}],
             )
-            message = response.choices[0].message.content if response and response.choices else ""
+            message = (
+                response.choices[0].message.content
+                if response and response.choices
+                else ""
+            )
         else:
             raise CommitGenerationError(f"Unbekannter Provider: {provider}")
     except Exception as exc:  # pragma: no cover - defensive fallback
@@ -128,7 +176,7 @@ def generate_commit_message(
         print(f"Fehler bei der Commit-Generierung: {exc}")
         return "chore: update changes"
 
-    message = message.strip()
+    message = (message or "").strip()
     if not message:
         return "chore: update changes"
 
@@ -137,7 +185,9 @@ def generate_commit_message(
     return message
 
 
-def prompt_to_stage(repo: Repo, files: List[str], label: str, add_all: bool = False) -> None:
+def prompt_to_stage(
+    repo: Repo, files: List[str], label: str, add_all: bool = False
+) -> None:
     """Fragt, ob Dateien gestagt werden sollen, und führt das Staging aus."""
     if not files:
         return
@@ -146,7 +196,9 @@ def prompt_to_stage(repo: Repo, files: List[str], label: str, add_all: bool = Fa
     for file in files:
         print(f" - {file}")
 
-    user_input = input(f"\nMöchtest du alle {label.lower()} hinzufügen? (y/n): ").strip().lower()
+    user_input = (
+        input(f"\nMöchtest du alle {label.lower()} hinzufügen? (y/n): ").strip().lower()
+    )
     if user_input == "y":
         if add_all:
             repo.git.add(all=True)
@@ -167,8 +219,12 @@ def write_commit_template(
     """Schreibt die Commit-Nachricht plus Kontext in eine temporäre Datei."""
     with open(file_path, "w") as f:
         f.write(commit_message)
-        f.write("\n\n# Bitte gib die Commit-Nachricht für deine Änderungen ein. Zeilen, die\n")
-        f.write("# mit # beginnen, werden ignoriert, und eine leere Nachricht bricht den Commit ab.\n")
+        f.write(
+            "\n\n# Bitte gib die Commit-Nachricht für deine Änderungen ein. Zeilen, die\n"
+        )
+        f.write(
+            "# mit # beginnen, werden ignoriert, und eine leere Nachricht bricht den Commit ab.\n"
+        )
         f.write("#\n# Zu übernehmende Änderungen:\n")
 
         for file in modified_files:
@@ -200,18 +256,24 @@ def main() -> None:
         return
 
     untracked_files = repo.untracked_files
-    unstaged_files = [item.a_path for item in repo.index.diff(None)]
+    unstaged_files = [
+        cast(str, item.a_path) for item in repo.index.diff(None) if item.a_path
+    ]
 
     prompt_to_stage(repo, untracked_files, "Untracked Files", add_all=True)
     prompt_to_stage(repo, unstaged_files, "unstaged Dateien")
 
     staged_files, deleted_files = get_staged_and_deleted_files(repo)
     if not staged_files and not deleted_files:
-        print("Keine gestagten Änderungen gefunden. Bitte Dateien zum Committen hinzufügen.")
+        print(
+            "Keine gestagten Änderungen gefunden. Bitte Dateien zum Committen hinzufügen."
+        )
         return
 
-    if AI_PROVIDER not in {"gemini", "zai"}:
-        print("Ungültiger Provider. Bitte 'gemini' oder 'zai' wählen (Umgebungsvariable AI_PROVIDER oder CLI-Flag --provider).")
+    if AI_PROVIDER not in {"gemini", "zai", "openai"}:
+        print(
+            "Ungültiger Provider. Bitte 'gemini', 'zai' oder 'openai' wählen (Umgebungsvariable AI_PROVIDER oder CLI-Flag --provider)."
+        )
         return
 
     try:
@@ -220,7 +282,9 @@ def main() -> None:
         print(exc)
         return
 
-    file_diffs = {file: get_diff_for_file(repo, file) for file in staged_files + deleted_files}
+    file_diffs = {
+        file: get_diff_for_file(repo, file) for file in staged_files + deleted_files
+    }
     try:
         commit_message = generate_commit_message(
             file_diffs=file_diffs,
@@ -240,14 +304,18 @@ def main() -> None:
     tmp_file.close()
 
     try:
-        write_commit_template(tmp_path, commit_message, staged_files, deleted_files, file_diffs)
+        write_commit_template(
+            tmp_path, commit_message, staged_files, deleted_files, file_diffs
+        )
 
         editor = os.getenv("EDITOR", "vim")
         subprocess.call([editor, tmp_path])
 
         with open(tmp_path, "r") as f:
             lines = f.readlines()
-            final_commit_message = "".join(line for line in lines if not line.startswith("#")).strip()
+            final_commit_message = "".join(
+                line for line in lines if not line.startswith("#")
+            ).strip()
 
         if not final_commit_message:
             print("Commit-Nachricht leer. Abbruch.")
@@ -261,7 +329,9 @@ def main() -> None:
         print("\n===== Vorgeschlagene bzw. angepasste Commit-Nachricht =====")
         print(final_commit_message)
 
-        user_input = input("\nMöchtest du diese Änderungen committen? (y/n): ").strip().lower()
+        user_input = (
+            input("\nMöchtest du diese Änderungen committen? (y/n): ").strip().lower()
+        )
         if user_input != "y":
             print("Commit abgebrochen.")
             return
