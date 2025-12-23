@@ -18,7 +18,7 @@ DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
 DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.6")
+DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.7")
 DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.2")
 
 DEFAULT_ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
@@ -46,10 +46,16 @@ parser.add_argument(
     help="Optional: eigenes Base-URL für OpenAI (OpenAI-kompatibel)",
     default=None,
 )
+parser.add_argument(
+    "--style",
+    help="Commit-Stil: sarcastic, humorous oder standard (default)",
+    default="standard",
+)
 args = parser.parse_args()
 
 COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
 AI_PROVIDER = (args.provider or DEFAULT_PROVIDER).lower()
+COMMIT_STYLE = (args.style or "standard").lower()
 
 if AI_PROVIDER == "gemini":
     default_model = DEFAULT_GEMINI_MODEL
@@ -127,6 +133,7 @@ def generate_commit_message(
     provider: str,
     model_name: str,
     commit_language: str,
+    commit_style: str,
     gemini_client: Optional[genai.Client],
     zai_client: Optional[OpenAI],
 ) -> str:
@@ -135,9 +142,17 @@ def generate_commit_message(
         (
             f"Erstelle eine prägnante Git-Commit-Nachricht in der Sprache {commit_language}. "
             "Nutze eine kurze Summary-Zeile (max 72 Zeichen) und optional einen Body mit kurzen Bullet Points. "
-            "Verwende kein Markdown-Formatting wie ``` oder Überschriften."
+            "Verwende kein Markdown-Formatting wie ``` oder Überschriften. "
         )
     ]
+
+    if commit_style in ("humorous", "sarcastic"):
+        prompt_parts[0] += (
+            f"Der Commit-Stil ist '{commit_style}'. "
+            "Verwende trockenen, subtilen Sarkasmus oder Humor, "
+            "bleibe fachlich korrekt, verständlich und git-konform. "
+            "Keine Albernheit, keine Memes."
+        )
 
     for file_path, diff in file_diffs.items():
         prompt_parts.append(f"Datei: {file_path}\nÄnderungen:\n{diff}")
@@ -291,6 +306,7 @@ def main() -> None:
             provider=AI_PROVIDER,
             model_name=MODEL_NAME,
             commit_language=COMMIT_LANGUAGE,
+            commit_style=COMMIT_STYLE,
             gemini_client=gemini_client,
             zai_client=zai_client,
         )
