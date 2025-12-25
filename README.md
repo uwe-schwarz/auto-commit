@@ -42,6 +42,7 @@ Wichtige Variablen:
 - Z.AI: `ZAI_API_KEY`, optional `ZAI_MODEL`, `ZAI_BASE_URL` (Standard: `https://api.z.ai/api/coding/paas/v4` – **Coding API**, nicht die General API)
 - OpenAI: `OPENAI_API_KEY`, optional `OPENAI_MODEL`, optional `OPENAI_BASE_URL`
 - `COMMIT_LANGUAGE`: Sprache der Commit-Nachricht
+- `NO_PUSH`: `true` oder `false` (Standard: `false`) – Überspringt den `git push` nach dem Commit
 
 ### 3. Skript als ausführbare Datei einrichten (optional)
 
@@ -84,6 +85,7 @@ CLI-Optionen:
 - `--zai-base-url`: eigenes Base-URL für die Z.AI Coding API (Standard ist bereits gesetzt)
 - `--openai-base-url`: optional eigenes Base-URL für OpenAI
 - `--style`: Commit-Stil: `sarcastic`, `humorous` oder `standard` (default)
+- `--no-push`: Überspringt den `git push` nach dem Commit (kann auch via `.env` mit `NO_PUSH=true` gesetzt werden)
 
 Beispiele:
 
