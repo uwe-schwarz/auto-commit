@@ -16,6 +16,7 @@ load_dotenv()
 # Defaults und Konfiguration
 DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
 DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
+DEFAULT_NO_PUSH = os.getenv("NO_PUSH", "false").lower() == "true"
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.7")
@@ -51,11 +52,18 @@ parser.add_argument(
     help="Commit-Stil: sarcastic, humorous oder standard (default)",
     default="standard",
 )
+parser.add_argument(
+    "--no-push",
+    help="Kein Push nach dem Commit ausführen",
+    action="store_true",
+    default=None,
+)
 args = parser.parse_args()
 
 COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
 AI_PROVIDER = (args.provider or DEFAULT_PROVIDER).lower()
 COMMIT_STYLE = (args.style or "standard").lower()
+NO_PUSH = args.no_push if args.no_push is not None else DEFAULT_NO_PUSH
 
 if AI_PROVIDER == "gemini":
     default_model = DEFAULT_GEMINI_MODEL
@@ -354,7 +362,9 @@ def main() -> None:
 
         subprocess.run(["git", "commit", "-F", tmp_path], check=False)
 
-        if "origin" in [remote.name for remote in repo.remotes]:
+        if NO_PUSH:
+            print("Git Push wurde übersprungen (--no-push aktiv).")
+        elif "origin" in [remote.name for remote in repo.remotes]:
             repo.remote("origin").push()
         else:
             print("Kein 'origin' Remote gefunden. Überspringe 'git push'.")
