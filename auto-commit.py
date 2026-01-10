@@ -58,12 +58,29 @@ parser.add_argument(
     action="store_true",
     default=None,
 )
+parser.add_argument(
+    "--no-editor",
+    help="Editor nicht öffnen, AI-Nachricht direkt verwenden",
+    action="store_true",
+)
+parser.add_argument(
+    "--auto-add",
+    help="Alle untracked und modifizierte Dateien automatisch hinzufügen",
+    action="store_true",
+)
+parser.add_argument(
+    "--yolo",
+    help="Kombiniert --no-editor und --auto-add - alles automatisch",
+    action="store_true",
+)
 args = parser.parse_args()
 
 COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
 AI_PROVIDER = (args.provider or DEFAULT_PROVIDER).lower()
 COMMIT_STYLE = (args.style or "standard").lower()
 NO_PUSH = args.no_push if args.no_push is not None else DEFAULT_NO_PUSH
+NO_EDITOR = args.no_editor or args.yolo
+AUTO_ADD = args.auto_add or args.yolo
 
 if AI_PROVIDER == "gemini":
     default_model = DEFAULT_GEMINI_MODEL
@@ -209,7 +226,11 @@ def generate_commit_message(
 
 
 def prompt_to_stage(
-    repo: Repo, files: List[str], label: str, add_all: bool = False
+    repo: Repo,
+    files: List[str],
+    label: str,
+    add_all: bool = False,
+    auto_add: bool = False,
 ) -> None:
     """Fragt, ob Dateien gestagt werden sollen, und führt das Staging aus."""
     if not files:
@@ -218,6 +239,14 @@ def prompt_to_stage(
     print(f"\n{label} gefunden:")
     for file in files:
         print(f" - {file}")
+
+    if auto_add:
+        if add_all:
+            repo.git.add(all=True)
+        else:
+            repo.git.add(files)
+        print(f"{label} wurden automatisch hinzugefügt.")
+        return
 
     user_input = (
         input(f"\nMöchtest du alle {label.lower()} hinzufügen? (y/n): ").strip().lower()
@@ -283,8 +312,10 @@ def main() -> None:
         cast(str, item.a_path) for item in repo.index.diff(None) if item.a_path
     ]
 
-    prompt_to_stage(repo, untracked_files, "Untracked Files", add_all=True)
-    prompt_to_stage(repo, unstaged_files, "unstaged Dateien")
+    prompt_to_stage(
+        repo, untracked_files, "Untracked Files", add_all=True, auto_add=AUTO_ADD
+    )
+    prompt_to_stage(repo, unstaged_files, "unstaged Dateien", auto_add=AUTO_ADD)
 
     staged_files, deleted_files = get_staged_and_deleted_files(repo)
     if not staged_files and not deleted_files:
@@ -332,14 +363,17 @@ def main() -> None:
             tmp_path, commit_message, staged_files, deleted_files, file_diffs
         )
 
-        editor = os.getenv("EDITOR", "vim")
-        subprocess.call([editor, tmp_path])
+        if NO_EDITOR:
+            final_commit_message = commit_message
+        else:
+            editor = os.getenv("EDITOR", "vim")
+            subprocess.call([editor, tmp_path])
 
-        with open(tmp_path, "r") as f:
-            lines = f.readlines()
-            final_commit_message = "".join(
-                line for line in lines if not line.startswith("#")
-            ).strip()
+            with open(tmp_path, "r") as f:
+                lines = f.readlines()
+                final_commit_message = "".join(
+                    line for line in lines if not line.startswith("#")
+                ).strip()
 
         if not final_commit_message:
             print("Commit-Nachricht leer. Abbruch.")
@@ -353,12 +387,15 @@ def main() -> None:
         print("\n===== Vorgeschlagene bzw. angepasste Commit-Nachricht =====")
         print(final_commit_message)
 
-        user_input = (
-            input("\nMöchtest du diese Änderungen committen? (y/n): ").strip().lower()
-        )
-        if user_input != "y":
-            print("Commit abgebrochen.")
-            return
+        if not args.yolo:
+            user_input = (
+                input("\nMöchtest du diese Änderungen committen? (y/n): ")
+                .strip()
+                .lower()
+            )
+            if user_input != "y":
+                print("Commit abgebrochen.")
+                return
 
         subprocess.run(["git", "commit", "-F", tmp_path], check=False)
 
