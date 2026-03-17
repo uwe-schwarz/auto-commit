@@ -70,7 +70,7 @@ source ~/.zshrc
 
 - **Google Gemini**: Nutzt die `google-genai` API. Modell per `.env` (`GEMINI_MODEL`) oder CLI `--model`.
 - **Z.AI GLM Coding Plan**: OpenAI-kompatibel. Verwende die Coding-Endpoint `https://api.z.ai/api/coding/paas/v4` und setze das Modell (`GLM-4.7`, `GLM-4.6`, `GLM-4.5`, `GLM-4.5-air`).
-- **OpenAI**: Nutzt die `openai` Python SDK (`chat.completions`). Standardmodell ist `gpt-5.4` (per `.env` `OPENAI_MODEL` oder via `--model`). Eine aktuelle Modell-Liste (Model-IDs für `--model`/`OPENAI_MODEL`) findest du hier: https://platform.openai.com/docs/models
+- **OpenAI**: Nutzt die `openai` Python SDK (`chat.completions`). Standardmodell ist `gpt-5.4-mini` (per `.env` `OPENAI_MODEL` oder via `--model`). Eine aktuelle Modell-Liste (Model-IDs für `--model`/`OPENAI_MODEL`) findest du hier: https://platform.openai.com/docs/models
 
 ## Verwendung
 
@@ -101,7 +101,7 @@ Beispiele:
 
 - OpenAI:
   ```bash
-  autocommit --provider openai --model gpt-5.4
+  autocommit --provider openai --model gpt-5.4-mini
   ```
 
 - Sarcastic Commit-Style:

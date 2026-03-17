@@ -20,7 +20,7 @@ DEFAULT_NO_PUSH = os.getenv("NO_PUSH", "false").lower() == "true"
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.7")
-DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4")
+DEFAULT_OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-mini")
 
 DEFAULT_ZAI_BASE_URL = os.getenv("ZAI_BASE_URL", "https://api.z.ai/api/coding/paas/v4")
 DEFAULT_OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL")
