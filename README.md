@@ -25,7 +25,7 @@ Das Skript unterstützt:
 ```bash
 git clone https://github.com/dein-user/autocommit.git ~/dev/auto-commit
 cd ~/dev/auto-commit
-pip install -r requirements.txt
+pip install --upgrade --upgrade-strategy eager -r requirements.txt
 ```
 
 ### 2. .env anlegen und Provider konfigurieren
@@ -50,7 +50,7 @@ Wichtige Variablen:
 cd ~/dev/auto-commit
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install --upgrade --upgrade-strategy eager -r requirements.txt
 
 mkdir -p ~/.local/bin
 echo '#!/bin/bash
@@ -140,7 +140,8 @@ Kein 'origin' Remote gefunden. Überspringe 'git push'.
 ## Fehlerbehebung
 
 - `hash -r` falls das Skript nach Installation nicht gefunden wird.
-- `pip install --force-reinstall -r requirements.txt` bei Import-Problemen.
+- `pip install --upgrade --upgrade-strategy eager -r requirements.txt` bei Import-Problemen oder nach Updates.
+- Wenn die venv inkonsistent ist: `.venv` löschen, neu anlegen und den gleichen Install-Befehl erneut ausführen.
 - PATH prüfen: `export PATH="$HOME/.local/bin:$PATH"`.
 
 ## Lizenz

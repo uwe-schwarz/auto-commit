@@ -3,12 +3,17 @@ import os
 import re
 import subprocess
 import tempfile
-from typing import Dict, List, Optional, Tuple, cast
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
 
 from git import InvalidGitRepositoryError, Repo
-from google import genai
-from openai import OpenAI
 from dotenv import load_dotenv
+
+if TYPE_CHECKING:
+    from google.genai import Client as GeminiClient
+    from openai import OpenAI as OpenAIClient
+else:
+    GeminiClient = Any
+    OpenAIClient = Any
 
 # .env-Datei laden
 load_dotenv()
@@ -100,6 +105,43 @@ class CommitGenerationError(RuntimeError):
     """Signalisiert Fehler bei der KI-Commit-Generierung, bei denen das Tool abbrechen sollte."""
 
 
+def dependency_repair_hint() -> str:
+    """Hinweis, wie die venv konsistent auf aktuelle direkte Abhängigkeiten gebracht wird."""
+    return (
+        "Aktualisiere die virtuelle Umgebung mit "
+        "'.venv/bin/pip install --upgrade --upgrade-strategy eager -r requirements.txt'. "
+        "Wenn das nicht reicht, venv neu anlegen und den gleichen Befehl erneut ausführen."
+    )
+
+
+def load_gemini_client() -> "GeminiClient":
+    """Importiert den Gemini-Client erst bei Bedarf."""
+    try:
+        from google import genai
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        raise ValueError(
+            "Gemini-SDK konnte nicht geladen werden. "
+            f"{dependency_repair_hint()} Ursprünglicher Fehler: {exc}"
+        ) from exc
+
+    return genai.Client(api_key=GEMINI_API_KEY)
+
+
+def load_openai_client(api_key: str, base_url: Optional[str] = None) -> "OpenAIClient":
+    """Importiert den OpenAI-kompatiblen Client erst bei Bedarf."""
+    try:
+        from openai import OpenAI
+    except Exception as exc:  # pragma: no cover - defensive fallback
+        raise ValueError(
+            "OpenAI-SDK konnte nicht geladen werden. "
+            f"{dependency_repair_hint()} Ursprünglicher Fehler: {exc}"
+        ) from exc
+
+    if base_url:
+        return OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(api_key=api_key)
+
+
 def find_git_root(path: str) -> Optional[str]:
     """Findet das Root-Verzeichnis des Git-Repositories."""
     try:
@@ -126,29 +168,29 @@ def get_diff_for_file(repo: Repo, file_path: str) -> str:
 
 def create_ai_clients(
     provider: str, zai_base_url: str
-) -> Tuple[Optional[genai.Client], Optional[OpenAI]]:
+) -> Tuple[Optional["GeminiClient"], Optional["OpenAIClient"]]:
     """Initialisiert die AI-Clients abhängig vom Provider."""
     if provider == "gemini":
         if not GEMINI_API_KEY:
             raise ValueError(
                 "GEMINI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein."
             )
-        return genai.Client(api_key=GEMINI_API_KEY), None
+        return load_gemini_client(), None
     if provider == "zai":
         if not ZAI_API_KEY:
             raise ValueError(
                 "ZAI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein."
             )
-        return None, OpenAI(api_key=ZAI_API_KEY, base_url=zai_base_url)
+        return None, load_openai_client(api_key=ZAI_API_KEY, base_url=zai_base_url)
 
     if provider == "openai":
         if not OPENAI_API_KEY:
             raise ValueError(
                 "OPENAI_API_KEY ist nicht gesetzt. Bitte füge ihn in die .env-Datei ein."
             )
-        if OPENAI_BASE_URL:
-            return None, OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-        return None, OpenAI(api_key=OPENAI_API_KEY)
+        return None, load_openai_client(
+            api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL
+        )
 
     raise ValueError(f"Unbekannter Provider: {provider}")
 
@@ -159,8 +201,8 @@ def generate_commit_message(
     model_name: str,
     commit_language: str,
     commit_style: str,
-    gemini_client: Optional[genai.Client],
-    zai_client: Optional[OpenAI],
+    gemini_client: Optional["GeminiClient"],
+    zai_client: Optional["OpenAIClient"],
 ) -> str:
     """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
     prompt_parts: List[str] = [
