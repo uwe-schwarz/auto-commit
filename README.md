@@ -25,7 +25,9 @@ Das Skript unterstützt:
 ```bash
 git clone https://github.com/dein-user/autocommit.git ~/dev/auto-commit
 cd ~/dev/auto-commit
-pip install --upgrade --upgrade-strategy eager -r requirements.txt
+python3 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip setuptools wheel
+.venv/bin/pip install --upgrade --upgrade-strategy eager -r requirements.txt
 ```
 
 ### 2. .env anlegen und Provider konfigurieren
@@ -48,9 +50,7 @@ Wichtige Variablen:
 
 ```bash
 cd ~/dev/auto-commit
-python3 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade --upgrade-strategy eager -r requirements.txt
+./scripts/refresh-venv.sh
 
 mkdir -p ~/.local/bin
 echo '#!/bin/bash
@@ -140,8 +140,8 @@ Kein 'origin' Remote gefunden. Überspringe 'git push'.
 ## Fehlerbehebung
 
 - `hash -r` falls das Skript nach Installation nicht gefunden wird.
-- `pip install --upgrade --upgrade-strategy eager -r requirements.txt` bei Import-Problemen oder nach Updates.
-- Wenn die venv inkonsistent ist: `.venv` löschen, neu anlegen und den gleichen Install-Befehl erneut ausführen.
+- `./scripts/refresh-venv.sh` nach Updates oder bei Import-Problemen.
+- Wenn du bewusst immer die neuesten auflösbaren Versionen willst: keine bestehende `.venv` reparieren, sondern immer die venv frisch mit `./scripts/refresh-venv.sh` neu bauen.
 - PATH prüfen: `export PATH="$HOME/.local/bin:$PATH"`.
 
 ## Lizenz
