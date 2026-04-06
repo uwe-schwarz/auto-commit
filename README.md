@@ -2,12 +2,12 @@
 
 ## Beschreibung
 
-`autocommit` ist ein Python-Skript, das geänderte Dateien in einem Git-Repository erkennt, ihre Diffs einsammelt und automatisch eine Commit-Nachricht erzeugt. Du kannst zwischen **Google Gemini** (über `google-genai`), **Z.AI GLM Coding Plan** (OpenAI-kompatibel, z. B. `GLM-4.6`) und **OpenAI** wählen. Danach öffnet sich dein Editor zur Feinjustierung, und auf Wunsch wird automatisch gepusht.
+`autocommit` ist ein Python-Skript, das geänderte Dateien in einem Git-Repository erkennt, ihre Diffs einsammelt und automatisch eine Commit-Nachricht erzeugt. Du kannst entweder den eingebauten Provider-Modus mit **Google Gemini** (über `google-genai`), **Z.AI GLM Coding Plan** (OpenAI-kompatibel, z. B. `GLM-4.6`) und **OpenAI** verwenden oder auf macOS einen **Shortcuts-Modus** nutzen. Danach öffnet sich dein Editor zur Feinjustierung, und auf Wunsch wird automatisch gepusht.
 
 Das Skript unterstützt:
 - Erkennung von **untracked** und **modifizierten, aber nicht gestagten** Dateien
 - Manuelle Bestätigung zum **Hinzufügen neuer oder geänderter Dateien**
-- Automatische Commit-Generierung über Gemini, Z.AI GLM (Coding API) **oder** OpenAI
+- Automatische Commit-Generierung über Gemini, Z.AI GLM (Coding API), OpenAI **oder** macOS Shortcuts
 - Bearbeitung der Commit-Nachricht im bevorzugten Editor (`$EDITOR` oder `vim`)
 - Automatisches **Committen und Pushen**, falls ein `origin`-Remote vorhanden ist
 
@@ -17,7 +17,7 @@ Das Skript unterstützt:
 
 - Python 3.x
 - `git`
-- API-Key für **Google Gemini**, **Z.AI GLM Coding Plan** oder **OpenAI**
+- API-Key für **Google Gemini**, **Z.AI GLM Coding Plan** oder **OpenAI**; alternativ macOS mit installiertem Shortcut
 - `pip`
 
 ### 1. Repository klonen und Abhängigkeiten installieren
@@ -39,12 +39,46 @@ cp env.example .env
 ```
 
 Wichtige Variablen:
+- `COMMIT_MODE`: `provider` (Standard) oder `shortcuts`
 - `AI_PROVIDER`: `gemini` (Standard), `zai` oder `openai`
 - Gemini: `GEMINI_API_KEY`, optional `GEMINI_MODEL`
 - Z.AI: `ZAI_API_KEY`, optional `ZAI_MODEL`, `ZAI_BASE_URL` (Standard: `https://api.z.ai/api/coding/paas/v4` – **Coding API**, nicht die General API)
 - OpenAI: `OPENAI_API_KEY`, optional `OPENAI_MODEL`, optional `OPENAI_BASE_URL`
+- macOS Shortcuts: `MACOS_SHORTCUT_NAME` (Standard: `auto-commit-chatgpt`)
 - `COMMIT_LANGUAGE`: Sprache der Commit-Nachricht
 - `NO_PUSH`: `true` oder `false` (Standard: `false`) – Überspringt den `git push` nach dem Commit
+
+## macOS Shortcuts-Modus
+
+Wenn du lieber die lokale macOS-Shortcuts-Integration verwenden willst, setze:
+
+```bash
+COMMIT_MODE=shortcuts
+MACOS_SHORTCUT_NAME=auto-commit-chatgpt
+```
+
+Der Shortcut bekommt exakt denselben Prompt wie der eingebaute Modellpfad. Die Übergabe erfolgt als echter Texteingang über AppleScript und `Shortcuts Events`, nicht als Datei-Upload:
+
+```bash
+osascript - auto-commit-chatgpt /tmp/prompt.txt <<'APPLESCRIPT'
+on run argv
+    set shortcutName to item 1 of argv
+    set inputPath to item 2 of argv
+    set promptText to read POSIX file inputPath
+    tell application "Shortcuts Events"
+        return run shortcut shortcutName with input promptText
+    end tell
+end run
+APPLESCRIPT
+```
+
+Der Modus prüft beim Start:
+- dass das System auf macOS läuft
+- dass die `shortcuts`-CLI verfügbar ist
+- dass der konfigurierte Shortcut tatsächlich existiert
+
+Shortcut-Link für `auto-commit-chatgpt`:
+- https://www.icloud.com/shortcuts/5f66f53029b04ab699fbd8b53bd3d1da
 
 ### 3. Skript als ausführbare Datei einrichten (optional)
 
@@ -80,8 +114,10 @@ autocommit
 
 CLI-Optionen:
 - `--lang`: Sprache der Commit-Nachricht
+- `--mode`: `provider` oder `shortcuts`
 - `--provider`: `gemini`, `zai` oder `openai` (überschreibt `.env`)
 - `--model`: Modellname für den gewählten Provider
+- `--shortcut-name`: Name des macOS-Shortcuts für `--mode shortcuts`
 - `--zai-base-url`: eigenes Base-URL für die Z.AI Coding API (Standard ist bereits gesetzt)
 - `--openai-base-url`: optional eigenes Base-URL für OpenAI
 - `--style`: Commit-Stil: `sarcastic`, `humorous` oder `standard` (default)
@@ -102,6 +138,11 @@ Beispiele:
 - OpenAI:
   ```bash
   autocommit --provider openai --model gpt-5.4-mini
+  ```
+
+- macOS Shortcuts:
+  ```bash
+  autocommit --mode shortcuts --shortcut-name auto-commit-chatgpt
   ```
 
 - Sarcastic Commit-Style:
@@ -142,6 +183,7 @@ Kein 'origin' Remote gefunden. Überspringe 'git push'.
 - `hash -r` falls das Skript nach Installation nicht gefunden wird.
 - `./scripts/refresh-venv.sh` nach Updates oder bei Import-Problemen.
 - Wenn du bewusst immer die neuesten auflösbaren Versionen willst: keine bestehende `.venv` reparieren, sondern immer die venv frisch mit `./scripts/refresh-venv.sh` neu bauen.
+- `--mode shortcuts` funktioniert nur auf macOS und bricht sauber ab, wenn der konfigurierte Shortcut fehlt.
 - PATH prüfen: `export PATH="$HOME/.local/bin:$PATH"`.
 
 ## Lizenz

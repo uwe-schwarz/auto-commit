@@ -1,6 +1,8 @@
 import argparse
 import os
+import platform
 import re
+import shutil
 import subprocess
 import tempfile
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, cast
@@ -20,8 +22,12 @@ load_dotenv()
 
 # Defaults und Konfiguration
 DEFAULT_LANGUAGE = os.getenv("COMMIT_LANGUAGE", "Deutsch")
+DEFAULT_MODE = os.getenv("COMMIT_MODE", "provider").lower()
 DEFAULT_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
 DEFAULT_NO_PUSH = os.getenv("NO_PUSH", "false").lower() == "true"
+DEFAULT_MACOS_SHORTCUT_NAME = os.getenv(
+    "MACOS_SHORTCUT_NAME", "auto-commit-chatgpt"
+)
 
 DEFAULT_GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 DEFAULT_ZAI_MODEL = os.getenv("ZAI_MODEL", "GLM-4.7")
@@ -38,9 +44,19 @@ parser = argparse.ArgumentParser(
     description="Auto-Commit mit AI-generierter Commit-Message."
 )
 parser.add_argument("--lang", help="Sprache der Commit-Message", default=None)
+parser.add_argument(
+    "--mode",
+    help="Commit-Generierung: provider (default) oder shortcuts",
+    default=None,
+)
 parser.add_argument("--model", help="Modellname (abhängig vom Provider)", default=None)
 parser.add_argument(
     "--provider", help="AI-Provider: gemini, zai oder openai", default=None
+)
+parser.add_argument(
+    "--shortcut-name",
+    help="Name des macOS-Shortcuts für --mode shortcuts",
+    default=None,
 )
 parser.add_argument(
     "--zai-base-url",
@@ -81,11 +97,13 @@ parser.add_argument(
 args = parser.parse_args()
 
 COMMIT_LANGUAGE = args.lang or DEFAULT_LANGUAGE
+COMMIT_MODE = (args.mode or DEFAULT_MODE).lower()
 AI_PROVIDER = (args.provider or DEFAULT_PROVIDER).lower()
 COMMIT_STYLE = (args.style or "standard").lower()
 NO_PUSH = args.no_push if args.no_push is not None else DEFAULT_NO_PUSH
 NO_EDITOR = args.no_editor or args.yolo
 AUTO_ADD = args.auto_add or args.yolo
+MACOS_SHORTCUT_NAME = args.shortcut_name or DEFAULT_MACOS_SHORTCUT_NAME
 
 if AI_PROVIDER == "gemini":
     default_model = DEFAULT_GEMINI_MODEL
@@ -195,16 +213,10 @@ def create_ai_clients(
     raise ValueError(f"Unbekannter Provider: {provider}")
 
 
-def generate_commit_message(
-    file_diffs: Dict[str, str],
-    provider: str,
-    model_name: str,
-    commit_language: str,
-    commit_style: str,
-    gemini_client: Optional["GeminiClient"],
-    zai_client: Optional["OpenAIClient"],
+def build_commit_prompt(
+    file_diffs: Dict[str, str], commit_language: str, commit_style: str
 ) -> str:
-    """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
+    """Baut den Prompt für die Commit-Generierung."""
     prompt_parts: List[str] = [
         (
             f"Erstelle eine prägnante Git-Commit-Nachricht in der Sprache {commit_language}. "
@@ -224,7 +236,67 @@ def generate_commit_message(
     for file_path, diff in file_diffs.items():
         prompt_parts.append(f"Datei: {file_path}\nÄnderungen:\n{diff}")
 
-    prompt = "\n\n".join(prompt_parts)
+    return "\n\n".join(prompt_parts)
+
+
+def normalize_commit_message(message: str) -> str:
+    """Bereitet die generierte Commit-Nachricht für die weitere Nutzung auf."""
+    message = (message or "").strip()
+    if not message:
+        return "chore: update changes"
+
+    # Mehrere Leerzeilen reduzieren, sonst nichts verändern
+    return re.sub(r"\n{3,}", "\n\n", message)
+
+
+def ensure_macos_shortcut_available(shortcut_name: str) -> None:
+    """Validiert, dass macOS-Shortcuts verfügbar ist und der Shortcut existiert."""
+    if platform.system() != "Darwin":
+        raise ValueError(
+            "Der Modus '--mode shortcuts' wird nur auf macOS unterstützt."
+        )
+
+    if shutil.which("osascript") is None:
+        raise ValueError(
+            "Die macOS-CLI 'osascript' wurde nicht gefunden. "
+            "Bitte auf macOS ausführen oder einen anderen Modus wählen."
+        )
+
+    if shutil.which("shortcuts") is None:
+        raise ValueError(
+            "Die macOS-CLI 'shortcuts' wurde nicht gefunden. "
+            "Bitte auf macOS ausführen oder einen anderen Modus wählen."
+        )
+
+    result = subprocess.run(
+        ["shortcuts", "list"], capture_output=True, text=True, check=False
+    )
+    if result.returncode != 0:
+        error_message = result.stderr.strip() or result.stdout.strip() or "Unbekannter Fehler"
+        raise ValueError(
+            "Die Liste der Shortcuts konnte nicht geladen werden: "
+            f"{error_message}"
+        )
+
+    shortcuts = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    if shortcut_name not in shortcuts:
+        raise ValueError(
+            f"Der Shortcut '{shortcut_name}' wurde nicht gefunden. "
+            "Bitte in der Shortcuts-App anlegen oder mit --shortcut-name anpassen."
+        )
+
+
+def generate_commit_message(
+    file_diffs: Dict[str, str],
+    provider: str,
+    model_name: str,
+    commit_language: str,
+    commit_style: str,
+    gemini_client: Optional["GeminiClient"],
+    zai_client: Optional["OpenAIClient"],
+) -> str:
+    """Generiert eine Commit-Nachricht basierend auf den Dateidiffs."""
+    prompt = build_commit_prompt(file_diffs, commit_language, commit_style)
 
     try:
         if provider == "gemini":
@@ -258,13 +330,56 @@ def generate_commit_message(
         print(f"Fehler bei der Commit-Generierung: {exc}")
         return "chore: update changes"
 
-    message = (message or "").strip()
-    if not message:
-        return "chore: update changes"
+    return normalize_commit_message(message)
 
-    # Mehrere Leerzeilen reduzieren, sonst nichts verändern
-    message = re.sub(r"\n{3,}", "\n\n", message)
-    return message
+
+def generate_commit_message_with_shortcut(
+    file_diffs: Dict[str, str],
+    commit_language: str,
+    commit_style: str,
+    shortcut_name: str,
+) -> str:
+    """Generiert die Commit-Nachricht über einen lokalen macOS-Shortcut."""
+    ensure_macos_shortcut_available(shortcut_name)
+    prompt = build_commit_prompt(file_diffs, commit_language, commit_style)
+
+    applescript = """
+on run argv
+    set shortcutName to item 1 of argv
+    set inputPath to item 2 of argv
+    set promptText to read POSIX file inputPath
+    tell application "Shortcuts Events"
+        return run shortcut shortcutName with input promptText
+    end tell
+end run
+""".strip()
+
+    with tempfile.NamedTemporaryFile(
+        mode="w", delete=False, suffix=".txt", encoding="utf-8"
+    ) as input_file:
+        input_file.write(prompt)
+        input_path = input_file.name
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-", shortcut_name, input_path],
+            input=applescript,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    finally:
+        if os.path.exists(input_path):
+            os.remove(input_path)
+
+    if result.returncode != 0:
+        error_message = result.stderr.strip() or result.stdout.strip() or "Unbekannter Fehler"
+        raise CommitGenerationError(
+            "Commit-Nachricht konnte nicht über macOS Shortcuts generiert werden: "
+            f"{error_message}"
+        )
+
+    return normalize_commit_message(result.stdout)
 
 
 def prompt_to_stage(
@@ -366,34 +481,56 @@ def main() -> None:
         )
         return
 
-    if AI_PROVIDER not in {"gemini", "zai", "openai"}:
+    if COMMIT_MODE not in {"provider", "shortcuts"}:
         print(
-            "Ungültiger Provider. Bitte 'gemini', 'zai' oder 'openai' wählen (Umgebungsvariable AI_PROVIDER oder CLI-Flag --provider)."
+            "Ungültiger Modus. Bitte 'provider' oder 'shortcuts' wählen "
+            "(Umgebungsvariable COMMIT_MODE oder CLI-Flag --mode)."
         )
-        return
-
-    try:
-        gemini_client, zai_client = create_ai_clients(AI_PROVIDER, ZAI_BASE_URL)
-    except ValueError as exc:
-        print(exc)
         return
 
     file_diffs = {
         file: get_diff_for_file(repo, file) for file in staged_files + deleted_files
     }
-    try:
-        commit_message = generate_commit_message(
-            file_diffs=file_diffs,
-            provider=AI_PROVIDER,
-            model_name=MODEL_NAME,
-            commit_language=COMMIT_LANGUAGE,
-            commit_style=COMMIT_STYLE,
-            gemini_client=gemini_client,
-            zai_client=zai_client,
-        )
-    except CommitGenerationError as exc:
-        print(exc)
-        return
+
+    if COMMIT_MODE == "provider":
+        if AI_PROVIDER not in {"gemini", "zai", "openai"}:
+            print(
+                "Ungültiger Provider. Bitte 'gemini', 'zai' oder 'openai' wählen "
+                "(Umgebungsvariable AI_PROVIDER oder CLI-Flag --provider)."
+            )
+            return
+
+        try:
+            gemini_client, zai_client = create_ai_clients(AI_PROVIDER, ZAI_BASE_URL)
+        except ValueError as exc:
+            print(exc)
+            return
+
+        try:
+            commit_message = generate_commit_message(
+                file_diffs=file_diffs,
+                provider=AI_PROVIDER,
+                model_name=MODEL_NAME,
+                commit_language=COMMIT_LANGUAGE,
+                commit_style=COMMIT_STYLE,
+                gemini_client=gemini_client,
+                zai_client=zai_client,
+            )
+        except CommitGenerationError as exc:
+            print(exc)
+            return
+    else:
+        try:
+            commit_message = generate_commit_message_with_shortcut(
+                file_diffs=file_diffs,
+                commit_language=COMMIT_LANGUAGE,
+                commit_style=COMMIT_STYLE,
+                shortcut_name=MACOS_SHORTCUT_NAME,
+            )
+        except (CommitGenerationError, ValueError) as exc:
+            print(exc)
+            return
+
     commit_message = commit_message or "chore: update changes"
 
     tmp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".txt")
