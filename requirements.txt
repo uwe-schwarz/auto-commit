@@ -1,4 +1,4 @@
 GitPython>=3.1.46
-google-genai>=1.70.0
-openai>=2.30.0
+google-genai>=1.72.0
+openai>=2.31.0
 python-dotenv>=1.2.2
