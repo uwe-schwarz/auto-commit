@@ -15,20 +15,20 @@ Das Skript unterstützt:
 
 ### Voraussetzungen
 
-- Python 3.x
+- Python 3.11+
 - `git`
+- `uv`
 - API-Key für **Google Gemini**, **Z.AI GLM Coding Plan** oder **OpenAI**; alternativ macOS mit installiertem Shortcut
-- `pip`
 
 ### 1. Repository klonen und Abhängigkeiten installieren
 
 ```bash
 git clone https://github.com/dein-user/autocommit.git ~/dev/auto-commit
 cd ~/dev/auto-commit
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip setuptools wheel
-.venv/bin/pip install --upgrade --upgrade-strategy eager -r requirements.txt
+uv sync
 ```
+
+`uv` legt die lokale `.venv` selbst an und hält sie anhand von `pyproject.toml` und `uv.lock` konsistent.
 
 ### 2. .env anlegen und Provider konfigurieren
 
@@ -84,14 +84,10 @@ Shortcut-Link für `auto-commit-chatgpt`:
 
 ```bash
 cd ~/dev/auto-commit
-./scripts/refresh-venv.sh
-
-mkdir -p ~/.local/bin
-echo '#!/bin/bash
-source ~/dev/auto-commit/.venv/bin/activate
-python3 ~/dev/auto-commit/auto-commit.py "$@"' > ~/.local/bin/autocommit
-chmod +x ~/.local/bin/autocommit
+./scripts/install.sh
 ```
+
+Das Skript führt `uv sync` aus, testet den CLI-Start und installiert bzw. aktualisiert `~/.local/bin/autocommit`.
 
 Falls `~/.local/bin` nicht im PATH ist:
 
@@ -110,6 +106,12 @@ source ~/.zshrc
 
 ```bash
 autocommit
+```
+
+Ohne installierten Wrapper geht es direkt aus dem Repo heraus:
+
+```bash
+uv run autocommit
 ```
 
 CLI-Optionen:
@@ -181,8 +183,9 @@ Kein 'origin' Remote gefunden. Überspringe 'git push'.
 ## Fehlerbehebung
 
 - `hash -r` falls das Skript nach Installation nicht gefunden wird.
-- `./scripts/refresh-venv.sh` nach Updates oder bei Import-Problemen.
-- Wenn du bewusst immer die neuesten auflösbaren Versionen willst: keine bestehende `.venv` reparieren, sondern immer die venv frisch mit `./scripts/refresh-venv.sh` neu bauen.
+- `./scripts/install.sh` nach Updates oder bei Import-Problemen.
+- Normales Update: `git pull`, danach `uv sync`.
+- Neueste auflösbare Dependency-Versionen prüfen/übernehmen: `uv lock --upgrade`, danach `uv sync` und `uv run python -m unittest discover -s tests`.
 - `--mode shortcuts` funktioniert nur auf macOS und bricht sauber ab, wenn der konfigurierte Shortcut fehlt.
 - PATH prüfen: `export PATH="$HOME/.local/bin:$PATH"`.
 

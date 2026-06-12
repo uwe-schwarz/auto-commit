@@ -124,11 +124,11 @@ class CommitGenerationError(RuntimeError):
 
 
 def dependency_repair_hint() -> str:
-    """Hinweis, wie die venv konsistent auf aktuelle direkte Abhängigkeiten gebracht wird."""
+    """Hinweis, wie die uv-Umgebung konsistent aktualisiert wird."""
     return (
-        "Aktualisiere die virtuelle Umgebung mit "
-        "'.venv/bin/pip install --upgrade --upgrade-strategy eager -r requirements.txt'. "
-        "Wenn das nicht reicht, venv neu anlegen und den gleichen Befehl erneut ausführen."
+        "Aktualisiere die uv-Umgebung mit 'uv sync'. "
+        "Wenn du bewusst auf die neuesten auflösbaren Versionen gehen willst, "
+        "nutze 'uv lock --upgrade' und danach 'uv sync'."
     )
 
 
