@@ -15,8 +15,7 @@ echo "Installing ~/.local/bin/autocommit wrapper"
 mkdir -p "$HOME/.local/bin"
 cat > "$HOME/.local/bin/autocommit" <<WRAPPER
 #!/usr/bin/env bash
-cd "$ROOT_DIR"
-exec uv run autocommit "\$@"
+exec uv run --project "$ROOT_DIR" autocommit "\$@"
 WRAPPER
 chmod +x "$HOME/.local/bin/autocommit"
 

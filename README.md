@@ -88,6 +88,7 @@ cd ~/dev/auto-commit
 ```
 
 Das Skript führt `uv sync` aus, testet den CLI-Start und installiert bzw. aktualisiert `~/.local/bin/autocommit`.
+Der installierte Wrapper nutzt dieses Repository nur als Tool-Quelle; ausgeführt wird `autocommit` immer im aktuellen Arbeitsverzeichnis.
 
 Falls `~/.local/bin` nicht im PATH ist:
 

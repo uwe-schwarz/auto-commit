@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from importlib.metadata import distribution, version
@@ -26,9 +27,27 @@ class DependencyStackTest(unittest.TestCase):
             self.skipTest(f"{wrapper} is not installed")
 
         content = wrapper.read_text(encoding="utf-8")
-        self.assertIn("uv run autocommit", content)
+        self.assertIn('uv run --project "/Users/uwe/dev/auto-commit" autocommit', content)
+        self.assertNotIn("cd ", content)
         self.assertNotIn(".venv/bin/activate", content)
         self.assertNotIn("auto-commit.py", content)
+
+    def test_local_binary_preserves_callers_working_directory(self) -> None:
+        wrapper = Path.home().joinpath(".local/bin/autocommit")
+        if not wrapper.exists():
+            self.skipTest(f"{wrapper} is not installed")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = subprocess.run(
+                [str(wrapper), "--no-push"],
+                cwd=tmpdir,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Fehler: Kein Git-Repository gefunden.", result.stdout)
 
     def test_cli_help_smoke_test(self) -> None:
         result = subprocess.run(
